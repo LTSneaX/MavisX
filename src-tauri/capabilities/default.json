@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "MavisX default capabilities",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-load",
+    "sql:allow-close",
+    "notification:allow-notify",
+    "notification:allow-request-permission",
+    "notification:allow-check-permissions",
+    "shell:allow-open"
+  ]
+}

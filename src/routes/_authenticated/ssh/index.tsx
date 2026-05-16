@@ -1,0 +1,11 @@
+import { createFileRoute } from '@tanstack/react-router'
+import { SshTerminalPage } from '@/features/ssh'
+
+export const Route = createFileRoute('/_authenticated/ssh/')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    host: typeof search.host === 'string' ? search.host : undefined,
+    port: typeof search.port === 'string' ? Number(search.port) : undefined,
+    username: typeof search.username === 'string' ? search.username : undefined,
+  }),
+  component: SshTerminalPage,
+})

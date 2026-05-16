@@ -1,0 +1,70 @@
+[package]
+name = "mavisx"
+version = "0.1.0"
+description = "MavisX — Infrastructure Monitoring Desktop App"
+authors = ["MavisX"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.1", features = [] }
+
+[dependencies]
+# Tauri core
+tauri = { version = "2.11.1", features = ["tray-icon"] }
+tauri-plugin-log = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-notification = "2"
+tauri-plugin-shell = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP checks
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# DNS checks
+hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# IDs + time
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Direct DB access from engine (same version tauri-plugin-sql uses internally)
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio"] }
+
+# Email notifications
+lettre = { version = "0.11", features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls"], default-features = false }
+
+# Vault encryption
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"
+
+# Logging
+log = "0.4"
+
+# TLS (for SSL expiry checks)
+rustls = "0.23"
+rustls-pki-types = "1"
+tokio-rustls = "0.26"
+webpki-roots = "0.26"
+
+# SSH terminal
+russh = "0.45"
+russh-keys = "0.45"
+async-trait = "0.1"
+
+# Network toolkit
+futures = "0.3"
+x509-cert = "0.2"
