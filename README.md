@@ -125,4 +125,4 @@ See [`PLAN.md`](../PLAN.md) for current build state and design standards.
 
 ## License
 
-MIT
+[Elastic License 2.0 (ELv2)](LICENSE) — source available, commercial use permitted, managed service / SaaS resale prohibited. Copyright © 2026 LTSneaX.
