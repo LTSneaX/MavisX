@@ -1,119 +1,128 @@
-# Shadcn Admin Dashboard
+# MavisX
 
-Admin Dashboard UI crafted with Shadcn and Vite. Built with responsiveness and accessibility in mind.
+**"The only app an IT guy needs open."**
 
-![alt text](public/images/shadcn-admin.png)
+A Tauri v2 desktop app replacing Uptime Kuma, Termius, FileZilla, Portainer, Grafana, Royal TSX, and your browser tabs to internal webapps — all in one window. Local-first, no cloud required, free forever for solo use.
 
-[![Sponsored by Clerk](https://img.shields.io/badge/Sponsored%20by-Clerk-5b6ee1?logo=clerk)](https://go.clerk.com/GttUAaK)
+---
 
-I've been creating dashboard UIs at work and for my personal projects. I always wanted to make a reusable collection of dashboard UI for future projects; and here it is now. While I've created a few custom components, some of the code is directly adapted from ShadcnUI examples.
+## What it does
 
-> This is not a starter project (template) though. I'll probably make one in the future.
+| Module | Tier | Status |
+|---|---|---|
+| Uptime Monitoring (HTTP, port, ping, DNS, SSL, cron) | Free | ✅ Live |
+| Incident tracking + alert rules | Free | ✅ Live |
+| 16 notification channels (Discord, Slack, Telegram, email, PagerDuty, etc.) | Free / Pro | ✅ Live |
+| Credential Vault (AES-256-GCM + Argon2id) | Free / Pro | ✅ Live |
+| Connection Manager (SSH, SFTP, FTP, RDP, VNC, Docker, Web) | Free | ✅ Live |
+| SSH Terminal (multi-tab, PTY, xterm.js + WebGL) | Free | ✅ Live |
+| Log Viewer (SSH exec, live tail, 10 presets) | Free | ✅ Live |
+| Network Toolkit (ping, port scan, DNS, SSL, Wake-on-LAN) | Free | ✅ Live |
+| Web Viewer (bookmark internal webapps, favicon support) | Free | ✅ Live |
+| Status Page (static HTML export) | Pro | ✅ Live |
+| SFTP / FTP File Manager | Free | 🔲 Phase 2 |
+| Agent + Server Metrics | Pro | 🔲 Phase 3 |
+| Docker Manager | Pro | 🔲 Phase 4 |
+| MavisX Cloud (team sync, real auth, self-hostable) | Pro | 🔲 Phase 9 |
 
-## Features
+---
 
-- Light/dark mode
-- Responsive
-- Accessible
-- With built-in Sidebar component
-- Global search command
-- 10+ pages
-- Extra custom components
-- RTL support
+## Tech stack
 
-<details>
-<summary>Customized Components (click to expand)</summary>
+| Layer | Choice |
+|---|---|
+| Desktop shell | Tauri v2 (Rust, `stable-x86_64-pc-windows-msvc`) |
+| Frontend | React 19 + TypeScript + Vite |
+| UI | shadcn/ui + Tailwind v4 + Radix UI |
+| Routing | TanStack Router (file-based) |
+| Data fetching | TanStack Query + TanStack Table |
+| Local database | SQLite via `tauri-plugin-sql` (JS) + `sqlx 0.8` (Rust engine) |
+| SSH | `russh 0.45` + `russh-keys` — pure Rust, no C deps, MSVC clean |
+| Terminal UI | `@xterm/xterm` + `@xterm/addon-webgl` + `@xterm/addon-fit` |
+| Vault crypto | `aes-gcm 0.10` + `argon2 0.5` — AES-256-GCM + Argon2id |
+| HTTP checks | `reqwest 0.12` (rustls, no OpenSSL) |
+| DNS checks | `hickory-resolver 0.24` |
+| SSL checks | `tokio-rustls` + `x509-cert 0.2` |
+| Notifications | `lettre 0.11` (email/SMTP) + HTTP POST (all other channels) |
+| State | Zustand (auth + vault) |
+| Charts | Recharts |
 
-This project uses Shadcn UI components, but some have been slightly modified for better RTL (Right-to-Left) support and other improvements. These customized components differ from the original Shadcn UI versions.
+---
 
-If you want to update components using the Shadcn CLI (e.g., `npx shadcn@latest add <component>`), it's generally safe for non-customized components. For the listed customized ones, you may need to manually merge changes to preserve the project's modifications and avoid overwriting RTL support or other updates.
+## Architecture
 
-> If you don't require RTL support, you can safely update the 'RTL Updated Components' via the Shadcn CLI, as these changes are primarily for RTL compatibility. The 'Modified Components' may have other customizations to consider.
-
-### Modified Components
-
-- scroll-area
-- sonner
-- separator
-
-### RTL Updated Components
-
-- alert-dialog
-- calendar
-- command
-- dialog
-- dropdown-menu
-- select
-- table
-- sheet
-- sidebar
-- switch
-
-**Notes:**
-
-- **Modified Components**: These have general updates, potentially including RTL adjustments.
-- **RTL Updated Components**: These have specific changes for RTL language support (e.g., layout, positioning).
-- For implementation details, check the source files in `src/components/ui/`.
-- All other Shadcn UI components in the project are standard and can be safely updated via the CLI.
-
-</details>
-
-## Tech Stack
-
-**UI:** [ShadcnUI](https://ui.shadcn.com) (TailwindCSS + RadixUI)
-
-**Build Tool:** [Vite](https://vitejs.dev/)
-
-**Routing:** [TanStack Router](https://tanstack.com/router/latest)
-
-**Type Checking:** [TypeScript](https://www.typescriptlang.org/)
-
-**Linting/Formatting:** [ESLint](https://eslint.org/) & [Prettier](https://prettier.io/)
-
-**Icons:** [Lucide Icons](https://lucide.dev/icons/), [Tabler Icons](https://tabler.io/icons) (Brand icons only)
-
-**Auth (partial):** [Clerk](https://go.clerk.com/GttUAaK)
-
-## Run Locally
-
-Clone the project
-
-```bash
-  git clone https://github.com/satnaing/shadcn-admin.git
+```
+mavisx-app/
+├── src/                    # React frontend (runs in WebView2)
+│   ├── features/           # One folder per app module
+│   ├── routes/             # TanStack Router file-based routes
+│   ├── lib/                # db.ts, ssh.ts, network.ts, vault.ts — invoke() wrappers
+│   └── stores/             # Zustand: auth-store, vault-store
+└── src-tauri/
+    ├── src/
+    │   ├── lib.rs          # Tauri builder — plugins, state, command registration
+    │   ├── engine.rs       # Background check engine (10s poll) + heartbeat server (port 5758)
+    │   ├── commands.rs     # SQLite migrations + one-shot Tauri commands
+    │   ├── ssh.rs          # PTY sessions + exec sessions (log viewer)
+    │   ├── network.rs      # Ping, port scan, DNS, SSL, Wake-on-LAN
+    │   ├── vault.rs        # AES-256-GCM credential vault
+    │   ├── notify.rs       # 16 notification channel implementations
+    │   └── tray.rs         # System tray (green/red icon, OS notifications)
+    └── migrations/
+        ├── 0001_init.sql   # monitors, check_results, incidents, alert_rules, workspace
+        └── 0002_workbench.sql  # vault_items, connections, web_tabs, agents, agent_metrics
 ```
 
-Go to the project directory
+The frontend calls Rust via `invoke('command', args)` for request/response and `Channel<T>` for streaming (SSH terminal, log viewer). All data lives in a local SQLite file — no external services required.
+
+---
+
+## Getting started
+
+**Requirements:** Rust (`stable-x86_64-pc-windows-msvc`), Node.js 20+, pnpm, MSVC C++ Build Tools
 
 ```bash
-  cd shadcn-admin
+git clone https://github.com/LTSneaX/MavisX.git
+cd MavisX/mavisx-app
+pnpm install
+pnpm tauri:dev
 ```
 
-Install dependencies
+First compile takes 3–5 minutes (Rust cold build). Subsequent starts are fast.
 
-```bash
-  pnpm install
-```
+---
 
-Start the server
+## Notification channels
 
-```bash
-  pnpm run dev
-```
+MavisX never manages bots, numbers, or accounts — you provide your own credentials and we fire to your endpoint.
 
-## Sponsoring this project ❤️
+**Free:** Discord, Email/SMTP, Webhook, Telegram, Slack, Microsoft Teams, Pushover, ntfy, Gotify, WhatsApp (Twilio), SMS (Twilio)
 
-If you find this project helpful or use this in your own work, consider [sponsoring me](https://github.com/sponsors/satnaing) to support development and maintenance. You can [buy me a coffee](https://buymeacoffee.com/satnaing) as well. Don’t worry, every penny helps. Thank you! 🙏
+**Pro:** PagerDuty, OpsGenie, Signal (signal-cli), Matrix, Rocket.Chat
 
-For questions or sponsorship inquiries, feel free to reach out at [satnaingdev@gmail.com](mailto:satnaingdev@gmail.com).
+---
 
-### Current Sponsor
+## Tiers
 
-- [Clerk](https://go.clerk.com/GttUAaK) - authentication and user management for the modern web
+**Free** — everything you need solo: all monitoring types, all free notification channels, SSH terminal, log viewer, network toolkit, web viewer, credential vault (implicit), connection manager.
 
-## Author
+**Pro** — team and power-user features: named credential vault UI, agent/server metrics, Docker manager, hosted status page, MavisX Cloud team sync (up to 50 seats, self-hostable).
 
-Crafted with 🤍 by [@satnaing](https://github.com/satnaing)
+---
+
+## Storage
+
+Default: SQLite (local file, zero config). Planned backends per `BLUEPRINT.md`: PostgreSQL, MySQL, Markdown files (Obsidian-compatible), JSON files.
+
+---
+
+## Roadmap
+
+See [`BLUEPRINT.md`](../BLUEPRINT.md) for the full 10-phase build sequence and module specs.
+See [`PLAN.md`](../PLAN.md) for current build state and design standards.
+
+---
 
 ## License
 
-Licensed under the [MIT License](https://choosealicense.com/licenses/mit/)
+MIT
