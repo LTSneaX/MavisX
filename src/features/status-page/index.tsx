@@ -182,7 +182,7 @@ function StatusPageGenerator() {
 }
 
 export function StatusPageFeature() {
-  const { data: plan } = useQuery({
+  const { data: _plan } = useQuery({
     queryKey: ['workspace-plan'],
     queryFn: () => db.getWorkspacePlan(),
   })

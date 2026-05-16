@@ -22,11 +22,8 @@ import {
   Loader2,
   Lock,
   Network,
-  Radio,
   Search,
   Shield,
-  Terminal,
-  Wifi,
   XCircle,
   Zap,
 } from 'lucide-react'
@@ -444,13 +441,6 @@ function SslTool() {
       setLoading(false)
     }
   }, [host, port])
-
-  const expiryColor = result
-    ? result.days_remaining < 0 ? 'text-red-400'
-    : result.days_remaining < 14 ? 'text-red-400'
-    : result.days_remaining < 30 ? 'text-amber-400'
-    : 'text-emerald-400'
-    : ''
 
   const expiryAccent = result
     ? result.days_remaining < 0 ? 'bg-red-500'

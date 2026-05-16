@@ -1,4 +1,4 @@
-import { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { AlertRule, Monitor } from '@/lib/db'
+import type { AlertRule, Monitor } from '@/lib/db'
 
 export type AlertRuleRow = AlertRule & { monitor_name: string | null }
 

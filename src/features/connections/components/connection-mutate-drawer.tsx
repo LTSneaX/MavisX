@@ -34,6 +34,15 @@ const ALL_PROTOCOLS: {
   { value: 'web',    label: 'Web',    icon: Globe,      defaultPort: null, color: 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10' },
 ]
 
+// ─── Per-protocol settings props ─────────────────────────────────────────────
+
+type ProtoSettingsProps = {
+  prefix: string
+  register: (name: string) => object
+  setValue: (name: string, value: unknown) => void
+  watch: (name: string) => unknown
+}
+
 // ─── Per-protocol settings components ────────────────────────────────────────
 
 function SettingsSection({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
@@ -58,7 +67,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function SshSettings({ prefix, register, setValue, watch }: any) {
+function SshSettings({ prefix, register, setValue, watch }: ProtoSettingsProps) {
   return (
     <SettingsSection title='SSH' color='border-emerald-500/20'>
       <Row>
@@ -93,7 +102,7 @@ function SshSettings({ prefix, register, setValue, watch }: any) {
   )
 }
 
-function SftpSettings({ prefix, register }: any) {
+function SftpSettings({ prefix, register }: Pick<ProtoSettingsProps, 'prefix' | 'register'>) {
   return (
     <SettingsSection title='SFTP' color='border-cyan-500/20'>
       <Row>
@@ -108,7 +117,7 @@ function SftpSettings({ prefix, register }: any) {
   )
 }
 
-function FtpSettings({ prefix, register, setValue, watch }: any) {
+function FtpSettings({ prefix, register, setValue }: Omit<ProtoSettingsProps, 'watch'>) {
   return (
     <SettingsSection title='FTP' color='border-blue-500/20'>
       <Row>
@@ -131,7 +140,7 @@ function FtpSettings({ prefix, register, setValue, watch }: any) {
   )
 }
 
-function RdpSettings({ prefix, register, setValue }: any) {
+function RdpSettings({ prefix, register, setValue }: Omit<ProtoSettingsProps, 'watch'>) {
   return (
     <SettingsSection title='RDP' color='border-violet-500/20'>
       <Row>
@@ -162,7 +171,7 @@ function RdpSettings({ prefix, register, setValue }: any) {
   )
 }
 
-function VncSettings({ prefix, register }: any) {
+function VncSettings({ prefix, register }: Pick<ProtoSettingsProps, 'prefix' | 'register'>) {
   return (
     <SettingsSection title='VNC' color='border-purple-500/20'>
       <Row>
@@ -177,7 +186,7 @@ function VncSettings({ prefix, register }: any) {
   )
 }
 
-function TelnetSettings({ prefix, register }: any) {
+function TelnetSettings({ prefix, register }: Pick<ProtoSettingsProps, 'prefix' | 'register'>) {
   return (
     <SettingsSection title='Telnet' color='border-amber-500/20'>
       <Row>
@@ -192,7 +201,7 @@ function TelnetSettings({ prefix, register }: any) {
   )
 }
 
-function DockerSettings({ prefix, register, setValue }: any) {
+function DockerSettings({ prefix, register, setValue }: Omit<ProtoSettingsProps, 'watch'>) {
   return (
     <SettingsSection title='Docker' color='border-sky-500/20'>
       <Row>
@@ -211,7 +220,7 @@ function DockerSettings({ prefix, register, setValue }: any) {
   )
 }
 
-function WebSettings({ prefix, register, setValue }: any) {
+function WebSettings({ prefix, register, setValue }: Omit<ProtoSettingsProps, 'watch'>) {
   return (
     <SettingsSection title='Web' color='border-indigo-500/20'>
       <Field label='URL'>
@@ -232,7 +241,7 @@ function WebSettings({ prefix, register, setValue }: any) {
   )
 }
 
-const PROTOCOL_SETTINGS: Record<ConnectionType, React.ComponentType<any>> = {
+const PROTOCOL_SETTINGS: Record<ConnectionType, React.ComponentType<ProtoSettingsProps>> = {
   ssh:    SshSettings,
   sftp:   SftpSettings,
   ftp:    FtpSettings,

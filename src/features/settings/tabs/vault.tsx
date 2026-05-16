@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVaultStore } from '@/stores/vault-store'
-import { vault, VaultItemMeta, VAULT_ITEM_TYPE_LABELS } from '@/lib/vault'
+import { vault, VAULT_ITEM_TYPE_LABELS, type VaultItemMeta } from '@/lib/vault'
 import { VaultUnlockDialog } from '@/features/vault/components/vault-unlock-dialog'
 import { VaultItemDialog } from '@/features/vault/components/vault-item-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

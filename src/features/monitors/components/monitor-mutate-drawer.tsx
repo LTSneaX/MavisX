@@ -235,7 +235,8 @@ export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }
         ping_count: 3,
       })
     }
-    setTestResult(null)
+    const timer = setTimeout(() => setTestResult(null), 0)
+    return () => clearTimeout(timer)
   }, [currentRow, open])
 
   async function handleTest() {

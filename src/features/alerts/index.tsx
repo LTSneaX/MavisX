@@ -20,8 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { db, AlertRule, Monitor } from '@/lib/db'
-import { buildColumns, AlertRuleRow } from './components/alert-rule-columns'
+import { db, type AlertRule, type Monitor } from '@/lib/db'
+import { buildColumns, type AlertRuleRow } from './components/alert-rule-columns'
 import { AlertRuleDialog } from './components/alert-rule-dialog'
 
 export function AlertsPage() {

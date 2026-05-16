@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { vault, VaultItemMeta, VaultItemType, VAULT_ITEM_TYPE_LABELS } from '@/lib/vault'
+import { vault, VAULT_ITEM_TYPE_LABELS, type VaultItemMeta, type VaultItemType } from '@/lib/vault'
 import {
   Dialog,
   DialogContent,
@@ -40,12 +40,14 @@ export function VaultItemDialog({ open, onClose, onSaved, item }: Props) {
   const isEdit = !!item
 
   useEffect(() => {
-    if (open) {
+    if (!open) return
+    const timer = setTimeout(() => {
       setName(item?.name ?? '')
       setType((item?.type as VaultItemType) ?? 'api_token')
       setValue('')
       setError('')
-    }
+    }, 0)
+    return () => clearTimeout(timer)
   }, [open, item])
 
   async function handleSubmit(e: React.FormEvent) {

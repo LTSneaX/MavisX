@@ -1,4 +1,4 @@
-import { ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -8,10 +8,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { type MonitorWithStatus } from '@/lib/db'
+import { db, type MonitorWithStatus } from '@/lib/db'
 import { MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { db } from '@/lib/db'
 import { useMonitors } from './monitors-provider'
 
 const MONITOR_TYPE_LABELS: Record<string, string> = {

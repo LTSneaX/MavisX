@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { db, AlertRule, Monitor } from '@/lib/db'
+import { db, type AlertRule, type Monitor } from '@/lib/db'
 import { useQueryClient } from '@tanstack/react-query'
 
 // ─── Channel registry ─────────────────────────────────────────────────────────

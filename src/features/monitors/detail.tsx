@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowLeft, RefreshCw, Globe, TrendingUp, Clock, Zap } from 'lucide-react'
 import {
@@ -26,8 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { db, CheckResult } from '@/lib/db'
-import { useQueryClient } from '@tanstack/react-query'
+import { db, type CheckResult } from '@/lib/db'
 
 const STATUS_COLORS: Record<string, string> = {
   up: '#22c55e',

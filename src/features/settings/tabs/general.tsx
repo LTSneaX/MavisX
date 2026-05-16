@@ -34,12 +34,14 @@ export function GeneralTab() {
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
 
   useEffect(() => {
-    if (workspace) {
+    if (!workspace) return
+    const timer = setTimeout(() => {
       setWorkspaceName(workspace.name)
       setDefaultInterval(config.defaultInterval ?? 300)
       setDefaultTimeout(config.defaultTimeout ?? 10)
-    }
-  }, [workspace])
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [workspace, config.defaultInterval, config.defaultTimeout])
 
   async function saveWorkspaceName() {
     setSavingName(true)
