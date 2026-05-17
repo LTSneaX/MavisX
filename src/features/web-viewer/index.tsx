@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { open as shellOpen } from '@tauri-apps/plugin-shell'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -12,8 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -22,10 +19,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { db } from '@/lib/db'
-import { ExternalLink, Globe, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import { Globe, MoreHorizontal, Plus, Trash2, X, RefreshCw, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
 
-// Extract a display hostname from a URL or bare host
 function parseHost(raw: string): string {
   try {
     const url = raw.startsWith('http') ? raw : `https://${raw}`
@@ -73,10 +70,8 @@ function AddBookmarkDialog({ open, onOpenChange, onAdd }: AddDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-sm'>
-        <DialogHeader>
-          <DialogTitle className='text-sm font-semibold'>Add web bookmark</DialogTitle>
-        </DialogHeader>
-        <div className='space-y-3 pt-1'>
+        <div className='flex flex-col gap-4'>
+          <p className='text-sm font-semibold'>Add web bookmark</p>
           <div>
             <Label className='text-xs text-muted-foreground'>Name</Label>
             <Input
@@ -105,6 +100,54 @@ function AddBookmarkDialog({ open, onOpenChange, onAdd }: AddDialogProps) {
   )
 }
 
+// ── In-app browser ─────────────────────────────────────────────────────────────
+
+interface InAppBrowserProps {
+  title: string
+  url: string
+  onClose: () => void
+}
+
+function InAppBrowser({ title, url, onClose }: InAppBrowserProps) {
+  const [key, setKey] = useState(0)
+
+  async function openExternal() {
+    try { await shellOpen(url) } catch { toast.error('Could not open URL') }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className='max-w-[95vw] w-[95vw] h-[90vh] flex flex-col gap-0 p-0'>
+        {/* Browser chrome */}
+        <div className='flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/30 shrink-0'>
+          <Globe className='h-4 w-4 text-muted-foreground shrink-0' />
+          <span className='text-sm font-medium truncate flex-1'>{title}</span>
+          <span className='font-mono text-[11px] text-muted-foreground truncate max-w-[300px]'>{url}</span>
+          <div className='flex items-center gap-1 ml-2'>
+            <Button variant='ghost' size='icon' className='h-7 w-7' onClick={() => setKey(k => k + 1)} title='Reload'>
+              <RefreshCw className='h-3.5 w-3.5' />
+            </Button>
+            <Button variant='ghost' size='icon' className='h-7 w-7' onClick={openExternal} title='Open in browser'>
+              <ExternalLink className='h-3.5 w-3.5' />
+            </Button>
+            <Button variant='ghost' size='icon' className='h-7 w-7' onClick={onClose} title='Close'>
+              <X className='h-3.5 w-3.5' />
+            </Button>
+          </div>
+        </div>
+        {/* iframe */}
+        <iframe
+          key={key}
+          src={url}
+          className='flex-1 w-full border-0'
+          title={title}
+          sandbox='allow-scripts allow-same-origin allow-forms allow-popups'
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Web card ──────────────────────────────────────────────────────────────────
 
 interface WebCardProps {
@@ -112,20 +155,12 @@ interface WebCardProps {
   name: string
   url: string
   onDelete: (id: string) => void
+  onOpen: () => void
 }
 
-function WebCard({ id, name, url, onDelete }: WebCardProps) {
+function WebCard({ id, name, url, onDelete, onOpen }: WebCardProps) {
   const [imgErr, setImgErr] = useState(false)
-  const normalized = normalizeUrl(url)
   const host = parseHost(url)
-
-  async function handleOpen() {
-    try {
-      await shellOpen(normalized)
-    } catch {
-      toast.error('Could not open URL')
-    }
-  }
 
   return (
     <div className='group relative flex flex-col overflow-hidden rounded-lg border border-border/50 bg-card transition-colors hover:border-border'>
@@ -172,9 +207,9 @@ function WebCard({ id, name, url, onDelete }: WebCardProps) {
         <Button
           size='sm'
           className='h-7 w-full gap-1.5 text-xs'
-          onClick={handleOpen}
+          onClick={onOpen}
         >
-          <ExternalLink className='h-3 w-3' />
+          <Globe className='h-3 w-3' />
           Open
         </Button>
       </div>
@@ -188,6 +223,7 @@ export function WebViewer() {
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [activeEntry, setActiveEntry] = useState<{ title: string; url: string } | null>(null)
 
   const { data: connections = [], isLoading } = useQuery({
     queryKey: ['connections'],
@@ -278,8 +314,9 @@ export function WebViewer() {
                 key={c.id}
                 id={c.id}
                 name={c.name}
-                url={c.host ?? ''}
+                url={normalizeUrl(c.host ?? '')}
                 onDelete={id => deleteMutation.mutate(id)}
+                onOpen={() => setActiveEntry({ title: c.name, url: normalizeUrl(c.host ?? '') })}
               />
             ))}
           </div>
@@ -291,6 +328,14 @@ export function WebViewer() {
         onOpenChange={setAddOpen}
         onAdd={(name, url) => saveMutation.mutateAsync({ name, url })}
       />
+
+      {activeEntry && (
+        <InAppBrowser
+          title={activeEntry.title}
+          url={activeEntry.url}
+          onClose={() => setActiveEntry(null)}
+        />
+      )}
     </>
   )
 }

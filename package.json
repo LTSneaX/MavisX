@@ -1,7 +1,7 @@
 {
   "name": "mavisx-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
@@ -47,6 +47,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query": "^5.99.0",
     "@tanstack/react-router": "^1.168.22",

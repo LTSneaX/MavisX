@@ -151,6 +151,13 @@ async fn run_cycle(pool: &SqlitePool, app: &AppHandle) -> Result<(), Box<dyn std
 
     tray::update_tray(app, any_down);
 
+    let plan: String = sqlx::query_scalar("SELECT plan FROM workspace WHERE id = 'local'")
+        .fetch_one(pool)
+        .await
+        .unwrap_or_else(|_| "free".to_string());
+
+    let min_interval: i64 = if plan == "pro" || plan == "enterprise" { 30 } else { 150 };
+
     let monitors: Vec<MonitorRow> = sqlx::query_as(
         r#"SELECT id, "type" AS monitor_type, target, interval_seconds, timeout_seconds, config
            FROM monitors WHERE enabled = 1"#,
@@ -168,7 +175,7 @@ async fn run_cycle(pool: &SqlitePool, app: &AppHandle) -> Result<(), Box<dyn std
         .fetch_optional(pool)
         .await?;
 
-        let effective_interval = monitor.interval_seconds.max(300);
+        let effective_interval = monitor.interval_seconds.max(min_interval);
         let is_due = match &last_check {
             None => true,
             Some(ts) => match ts.parse::<chrono::DateTime<Utc>>() {

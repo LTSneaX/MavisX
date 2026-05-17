@@ -28,6 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { VaultCredentialPicker } from '@/components/vault-credential-picker'
 import {
   Folder,
@@ -41,6 +49,8 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  FilePenLine,
+  Save,
 } from 'lucide-react'
 
 // ── Connect form ──────────────────────────────────────────────────────────────
@@ -197,11 +207,13 @@ function FileRow({
   selected,
   onSelect,
   onNavigate,
+  onEdit,
 }: {
   entry: FileEntry
   selected: boolean
   onSelect: () => void
   onNavigate: () => void
+  onEdit: () => void
 }) {
   return (
     <div
@@ -209,7 +221,7 @@ function FileRow({
         selected ? 'bg-accent' : 'hover:bg-accent/50'
       }`}
       onClick={onSelect}
-      onDoubleClick={() => entry.is_dir && onNavigate()}
+      onDoubleClick={() => entry.is_dir ? onNavigate() : onEdit()}
     >
       <div className='shrink-0'>
         {entry.is_dir ? (
@@ -257,6 +269,14 @@ export function FileManager() {
   // Mkdir dialog
   const [mkdirOpen, setMkdirOpen] = useState(false)
   const [mkdirName, setMkdirName] = useState('')
+
+  // Inline editor
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editorPath, setEditorPath] = useState('')
+  const [editorName, setEditorName] = useState('')
+  const [editorContent, setEditorContent] = useState('')
+  const [editorLoading, setEditorLoading] = useState(false)
+  const [editorSaving, setEditorSaving] = useState(false)
 
   // Upload ref
   const uploadRef = useRef<HTMLInputElement>(null)
@@ -326,6 +346,39 @@ export function FileManager() {
       triggerDownload(bytes, selected.name)
     } catch (e) {
       setListError(String(e))
+    }
+  }
+
+  async function handleOpenEditor(entry: FileEntry) {
+    if (!sessionId || entry.is_dir) return
+    setEditorPath(entry.path)
+    setEditorName(entry.name)
+    setEditorContent('')
+    setEditorLoading(true)
+    setEditorOpen(true)
+    try {
+      const bytes = await sftpReadFile(sessionId, entry.path)
+      setEditorContent(new TextDecoder().decode(new Uint8Array(bytes)))
+    } catch (e) {
+      setListError(String(e))
+      setEditorOpen(false)
+    } finally {
+      setEditorLoading(false)
+    }
+  }
+
+  async function handleSaveEditor() {
+    if (!sessionId || !editorPath) return
+    setEditorSaving(true)
+    try {
+      const bytes = Array.from(new TextEncoder().encode(editorContent))
+      await sftpWriteFile(sessionId, editorPath, bytes)
+      setEditorOpen(false)
+      await loadDir(sessionId, currentPath)
+    } catch (e) {
+      setListError(String(e))
+    } finally {
+      setEditorSaving(false)
     }
   }
 
@@ -469,6 +522,16 @@ export function FileManager() {
                 variant='ghost'
                 size='sm'
                 className='h-7 text-xs'
+                disabled={!selected || selected.is_dir}
+                onClick={() => selected && handleOpenEditor(selected)}
+              >
+                <FilePenLine className='mr-1.5 h-3.5 w-3.5' />
+                Edit
+              </Button>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='h-7 text-xs'
                 disabled={!selected}
                 onClick={() => {
                   if (!selected) return
@@ -549,6 +612,7 @@ export function FileManager() {
                       selected={selected?.path === entry.path}
                       onSelect={() => setSelected(entry)}
                       onNavigate={() => navigate(entry.path)}
+                      onEdit={() => handleOpenEditor(entry)}
                     />
                   ))}
                 </>
@@ -645,6 +709,40 @@ export function FileManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Inline file editor */}
+      <Dialog open={editorOpen} onOpenChange={(v) => !v && setEditorOpen(false)}>
+        <DialogContent className='max-w-4xl h-[80vh] flex flex-col gap-0 p-0'>
+          <DialogHeader className='px-4 pt-4 pb-3 border-b border-border/50'>
+            <DialogTitle className='text-sm font-mono'>{editorName}</DialogTitle>
+          </DialogHeader>
+          <div className='flex-1 overflow-hidden px-4 py-3'>
+            {editorLoading ? (
+              <div className='flex h-full items-center justify-center'>
+                <Loader2 className='h-5 w-5 animate-spin text-muted-foreground' />
+              </div>
+            ) : (
+              <Textarea
+                value={editorContent}
+                onChange={(e) => setEditorContent(e.target.value)}
+                className='h-full w-full resize-none font-mono text-xs bg-zinc-950 text-zinc-100 border-zinc-800'
+                spellCheck={false}
+              />
+            )}
+          </div>
+          <DialogFooter className='px-4 pb-4 pt-3 border-t border-border/50'>
+            <Button variant='outline' size='sm' onClick={() => setEditorOpen(false)}>Cancel</Button>
+            <Button size='sm' onClick={handleSaveEditor} disabled={editorSaving || editorLoading}>
+              {editorSaving ? (
+                <Loader2 className='mr-1.5 h-3.5 w-3.5 animate-spin' />
+              ) : (
+                <Save className='mr-1.5 h-3.5 w-3.5' />
+              )}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

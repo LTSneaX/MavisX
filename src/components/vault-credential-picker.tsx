@@ -1,39 +1,63 @@
 import { useEffect, useState } from 'react'
-import { useVaultStore } from '@/stores/vault-store'
-import { vault, type VaultItemMeta, type VaultItemType } from '@/lib/vault'
+import { vault, type VaultItemMeta, type VaultItemType, type VaultMeta } from '@/lib/vault'
 
 interface Props {
-  /** Vault item types to show in the picker */
   types: VaultItemType[]
-  /** Called with the decrypted secret and item metadata */
   onSelect: (secret: string, item: VaultItemMeta) => void
   className?: string
 }
 
+interface PickerItem {
+  vaultId: string
+  vaultName: string
+  item: VaultItemMeta
+}
+
 export function VaultCredentialPicker({ types, onSelect, className }: Props) {
-  const { isUnlocked } = useVaultStore()
-  const [items, setItems] = useState<VaultItemMeta[]>([])
+  const [entries, setEntries] = useState<PickerItem[]>([])
 
   useEffect(() => {
-    if (!isUnlocked) return
-    vault.listItems().then((all) => setItems(all.filter((i) => types.includes(i.type))))
-  }, [isUnlocked, types.join(',')])
+    let cancelled = false
+    async function load() {
+      try {
+        const vaults: VaultMeta[] = await vault.listVaults()
+        const results: PickerItem[] = []
+        await Promise.all(vaults.map(async (v) => {
+          const unlocked = await vault.isUnlocked(v.id)
+          if (!unlocked) return
+          const items = await vault.listItems(v.id)
+          items.filter((i) => types.includes(i.type)).forEach((item) => {
+            results.push({ vaultId: v.id, vaultName: v.name, item })
+          })
+        }))
+        if (!cancelled) setEntries(results)
+      } catch { /* vault locked or no vaults */ }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [types.join(',')])
 
-  if (!isUnlocked || items.length === 0) return null
+  if (entries.length === 0) return null
 
   async function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const id = e.target.value
-    if (!id) return
+    const val = e.target.value
+    if (!val) return
+    const [vaultId, itemId] = val.split('::')
+    const entry = entries.find((x) => x.vaultId === vaultId && x.item.id === itemId)
+    if (!entry) return
     try {
-      const secret = await vault.getSecret(id)
-      const item = items.find((i) => i.id === id)!
-      onSelect(secret, item)
-    } catch {
-      // vault locked mid-session — ignore
-    }
-    // Reset select back to placeholder so it can be re-triggered
+      const secret = await vault.getSecret(vaultId, itemId)
+      onSelect(secret, entry.item)
+    } catch { /* vault locked mid-session */ }
     e.target.value = ''
   }
+
+  // Group by vault for optgroup
+  const byVault = entries.reduce<Record<string, PickerItem[]>>((acc, e) => {
+    if (!acc[e.vaultId]) acc[e.vaultId] = []
+    acc[e.vaultId].push(e)
+    return acc
+  }, {})
 
   return (
     <select
@@ -41,13 +65,15 @@ export function VaultCredentialPicker({ types, onSelect, className }: Props) {
       defaultValue=''
       className={`h-7 rounded border border-zinc-700 bg-zinc-800/80 px-2 text-[11px] text-zinc-400 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 ${className ?? ''}`}
     >
-      <option value='' disabled>
-        From vault…
-      </option>
-      {items.map((item) => (
-        <option key={item.id} value={item.id}>
-          {item.name}
-        </option>
+      <option value='' disabled>From vault…</option>
+      {Object.entries(byVault).map(([vaultId, items]) => (
+        <optgroup key={vaultId} label={items[0].vaultName}>
+          {items.map(({ item }) => (
+            <option key={item.id} value={`${vaultId}::${item.id}`}>
+              {item.name}
+            </option>
+          ))}
+        </optgroup>
       ))}
     </select>
   )

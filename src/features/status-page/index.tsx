@@ -121,7 +121,11 @@ function StatusPageGenerator() {
 
   async function openInBrowser() {
     if (!outputPath) return
-    await open(outputPath)
+    // Convert Windows backslashes to forward slashes for file:// URL
+    const fileUrl = outputPath.startsWith('/')
+      ? `file://${outputPath}`
+      : `file:///${outputPath.replace(/\\/g, '/')}`
+    await open(fileUrl)
   }
 
   return (

@@ -25,7 +25,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(vault::VaultKey(std::sync::Mutex::new(None)))
+        .manage(vault::VaultKeys(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(ssh::SshSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(ssh::SshExecSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(sftp::SftpSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
@@ -35,10 +35,13 @@ pub fn run() {
             commands::generate_status_page,
             commands::record_heartbeat,
             commands::get_app_data_dir,
+            commands::set_workspace_plan,
             // Vault
-            vault::vault_is_setup,
+            vault::vault_list_vaults,
+            vault::vault_create_vault,
+            vault::vault_delete_vault,
+            vault::vault_rename_vault,
             vault::vault_is_unlocked,
-            vault::vault_setup,
             vault::vault_unlock,
             vault::vault_lock,
             vault::vault_list_items,
@@ -46,6 +49,7 @@ pub fn run() {
             vault::vault_update_item,
             vault::vault_delete_item,
             vault::vault_get_secret,
+            vault::vault_get_secret_by_item_id,
             // SSH terminal
             ssh::ssh_connect,
             ssh::ssh_send_input,

@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react'
+import { Link } from '@tanstack/react-router'
+import { isPlanPro } from '@/stores/plan-store'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -73,11 +75,13 @@ function KpiCard({
 // ── Tab bar ────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'ping',    label: 'Ping',        icon: Activity },
-  { id: 'ports',   label: 'Port Scan',   icon: Search },
-  { id: 'dns',     label: 'DNS',         icon: Globe },
-  { id: 'ssl',     label: 'SSL',         icon: Lock },
-  { id: 'wol',     label: 'Wake-on-LAN', icon: Zap },
+  { id: 'ping',    label: 'Ping',           icon: Activity, pro: false },
+  { id: 'ports',   label: 'Port Scan',      icon: Search,   pro: true  },
+  { id: 'dns',     label: 'DNS',            icon: Globe,    pro: true  },
+  { id: 'ssl',     label: 'SSL',            icon: Lock,     pro: true  },
+  { id: 'wol',     label: 'Wake-on-LAN',    icon: Zap,      pro: true  },
+  { id: 'headers', label: 'HTTP Headers',   icon: Network,  pro: true  },
+  { id: 'subnet',  label: 'Subnet Calc',    icon: Shield,   pro: true  },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -598,17 +602,259 @@ function WolTool() {
   )
 }
 
+// ── HTTP Headers tool ──────────────────────────────────────────────────────────
+
+interface HeaderResult {
+  status: number
+  statusText: string
+  headers: [string, string][]
+  durationMs: number
+}
+
+function HttpHeadersTool() {
+  const [url, setUrl] = useState('')
+  const [method, setMethod] = useState('GET')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<HeaderResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = useCallback(async () => {
+    const target = url.trim().startsWith('http') ? url.trim() : `http://${url.trim()}`
+    if (!target) return
+    setLoading(true); setError(null); setResult(null)
+    const t0 = performance.now()
+    try {
+      const resp = await fetch(target, { method, redirect: 'follow' })
+      const durationMs = Math.round(performance.now() - t0)
+      const headers: [string, string][] = []
+      resp.headers.forEach((value, key) => headers.push([key, value]))
+      setResult({ status: resp.status, statusText: resp.statusText, headers, durationMs })
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [url, method])
+
+  const statusColor = result
+    ? result.status < 300 ? 'bg-emerald-500'
+    : result.status < 400 ? 'bg-amber-500'
+    : 'bg-red-500'
+    : 'bg-zinc-500'
+
+  return (
+    <div className='flex flex-col gap-4'>
+      <div className='flex items-end gap-2'>
+        <div className='flex-1'>
+          <Label className='text-xs text-muted-foreground'>URL</Label>
+          <Input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && run()}
+            placeholder='http://192.168.1.1 or https://example.com'
+            className='mt-1 h-8 font-mono text-sm'
+          />
+        </div>
+        <div className='w-24'>
+          <Label className='text-xs text-muted-foreground'>Method</Label>
+          <Select value={method} onValueChange={setMethod}>
+            <SelectTrigger className='mt-1 h-8 text-sm'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'].map(m => (
+                <SelectItem key={m} value={m}>{m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size='sm' className='h-8' onClick={run} disabled={loading || !url}>
+          {loading ? <Loader2 className='h-3.5 w-3.5 animate-spin' /> : 'Send'}
+        </Button>
+      </div>
+
+      {error && <p className='rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400'>{error}</p>}
+
+      {result && (
+        <div className='flex flex-col gap-3'>
+          <div className='grid grid-cols-3 gap-2'>
+            <KpiCard label='Status' value={`${result.status} ${result.statusText}`} accent={statusColor} />
+            <KpiCard label='Headers' value={result.headers.length} accent='bg-indigo-500' />
+            <KpiCard label='Response time' value={`${result.durationMs}ms`} accent='bg-violet-500' />
+          </div>
+
+          <div className='rounded-lg border border-border/50 bg-card overflow-hidden'>
+            <div className='flex items-center justify-between border-b border-border/50 px-3 py-2'>
+              <span className='text-xs font-semibold'>Response headers</span>
+              <Button variant='ghost' size='sm' className='h-5 px-1.5 text-[10px]'
+                onClick={() => copyToClipboard(result.headers.map(([k, v]) => `${k}: ${v}`).join('\n'))}>
+                <Copy className='mr-1 h-3 w-3' />Copy all
+              </Button>
+            </div>
+            <div className='divide-y divide-border/30 max-h-80 overflow-y-auto'>
+              {result.headers.map(([key, value]) => (
+                <div key={key} className='flex items-start gap-3 px-3 py-2 group'>
+                  <span className='w-40 shrink-0 font-mono text-[10px] font-semibold text-indigo-400 pt-0.5 truncate'>{key}</span>
+                  <span className='min-w-0 break-all font-mono text-xs text-muted-foreground flex-1'>{value}</span>
+                  <Button variant='ghost' size='sm' className='ml-auto h-5 w-5 shrink-0 p-0 opacity-0 group-hover:opacity-100'
+                    onClick={() => copyToClipboard(value)}>
+                    <Copy className='h-3 w-3' />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Subnet Calculator ──────────────────────────────────────────────────────────
+
+function intToIp(n: number): string {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.')
+}
+
+function calcSubnet(cidr: string) {
+  const [ip, prefix] = cidr.split('/')
+  const prefixNum = parseInt(prefix ?? '24')
+  if (isNaN(prefixNum) || prefixNum < 0 || prefixNum > 32) throw new Error('Invalid prefix length')
+  const parts = ip.split('.').map(Number)
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) throw new Error('Invalid IP address')
+  const ipInt = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0
+  const mask = prefixNum === 0 ? 0 : (~0 << (32 - prefixNum)) >>> 0
+  const network = (ipInt & mask) >>> 0
+  const broadcast = (network | (~mask >>> 0)) >>> 0
+  const totalHosts = Math.pow(2, 32 - prefixNum)
+  const usableHosts = prefixNum < 31 ? Math.max(0, totalHosts - 2) : prefixNum === 31 ? 2 : 1
+  return {
+    network: intToIp(network),
+    broadcast: prefixNum < 31 ? intToIp(broadcast) : '—',
+    mask: intToIp(mask),
+    firstHost: prefixNum < 31 ? intToIp(network + 1) : intToIp(network),
+    lastHost: prefixNum < 31 ? intToIp(broadcast - 1) : intToIp(broadcast),
+    totalHosts,
+    usableHosts,
+    prefix: prefixNum,
+    cidr: `${intToIp(network)}/${prefixNum}`,
+  }
+}
+
+function SubnetTool() {
+  const [input, setInput] = useState('')
+  const [result, setResult] = useState<ReturnType<typeof calcSubnet> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = useCallback(() => {
+    setError(null); setResult(null)
+    const val = input.trim()
+    if (!val) return
+    const cidr = val.includes('/') ? val : `${val}/24`
+    try {
+      setResult(calcSubnet(cidr))
+    } catch (e) {
+      setError(String(e))
+    }
+  }, [input])
+
+  return (
+    <div className='flex flex-col gap-4 max-w-lg'>
+      <div className='flex items-end gap-2'>
+        <div className='flex-1'>
+          <Label className='text-xs text-muted-foreground'>IP / CIDR</Label>
+          <Input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && run()}
+            placeholder='192.168.1.0/24 or 10.0.0.1/16'
+            className='mt-1 h-8 font-mono text-sm'
+          />
+          <p className='mt-1 text-[10px] text-muted-foreground'>If no prefix is given, /24 is assumed</p>
+        </div>
+        <Button size='sm' className='h-8' onClick={run} disabled={!input}>
+          Calculate
+        </Button>
+      </div>
+
+      {error && <p className='rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400'>{error}</p>}
+
+      {result && (
+        <div className='flex flex-col gap-3'>
+          <div className='grid grid-cols-2 gap-2'>
+            <KpiCard label='Total addresses' value={result.totalHosts.toLocaleString()} accent='bg-indigo-500' />
+            <KpiCard label='Usable hosts' value={result.usableHosts.toLocaleString()} accent='bg-emerald-500' />
+          </div>
+
+          <div className='rounded-lg border border-border/50 bg-card overflow-hidden'>
+            <div className='border-b border-border/50 px-3 py-2 flex items-center justify-between'>
+              <span className='text-xs font-semibold'>Network details</span>
+              <Button variant='ghost' size='sm' className='h-5 px-1.5 text-[10px]'
+                onClick={() => copyToClipboard(result.cidr)}>
+                <Copy className='mr-1 h-3 w-3' />Copy CIDR
+              </Button>
+            </div>
+            <div className='divide-y divide-border/30'>
+              {[
+                { label: 'Network address', value: result.network },
+                { label: 'Subnet mask', value: result.mask },
+                { label: 'Broadcast address', value: result.broadcast },
+                { label: 'First usable host', value: result.firstHost },
+                { label: 'Last usable host', value: result.lastHost },
+                { label: 'CIDR notation', value: result.cidr },
+              ].map(({ label, value }) => (
+                <div key={label} className='flex items-center gap-3 px-3 py-2 group'>
+                  <span className='w-40 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground'>{label}</span>
+                  <span className='font-mono text-xs flex-1'>{value}</span>
+                  {value !== '—' && (
+                    <Button variant='ghost' size='sm' className='ml-auto h-5 w-5 shrink-0 p-0 opacity-0 group-hover:opacity-100'
+                      onClick={() => copyToClipboard(value)}>
+                      <Copy className='h-3 w-3' />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
+
+function ProWall() {
+  return (
+    <div className='flex flex-col items-center justify-center gap-4 py-20 text-center'>
+      <div className='flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/10'>
+        <Lock className='h-5 w-5 text-violet-400' />
+      </div>
+      <div>
+        <p className='font-semibold'>Pro feature</p>
+        <p className='text-sm text-muted-foreground mt-1'>Upgrade to unlock this tool.</p>
+      </div>
+      <Link to='/upgrade'>
+        <button className='rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors'>
+          Upgrade to Pro
+        </button>
+      </Link>
+    </div>
+  )
+}
 
 export function NetworkToolkit() {
   const [activeTab, setActiveTab] = useState<TabId>('ping')
+  const pro = isPlanPro()
 
   const tools: Record<TabId, React.ReactNode> = {
     ping: <PingTool />,
-    ports: <PortScanTool />,
-    dns: <DnsTool />,
-    ssl: <SslTool />,
-    wol: <WolTool />,
+    ports: pro ? <PortScanTool /> : <ProWall />,
+    dns: pro ? <DnsTool /> : <ProWall />,
+    ssl: pro ? <SslTool /> : <ProWall />,
+    wol: pro ? <WolTool /> : <ProWall />,
+    headers: pro ? <HttpHeadersTool /> : <ProWall />,
+    subnet: pro ? <SubnetTool /> : <ProWall />,
   }
 
   return (
@@ -625,12 +871,12 @@ export function NetworkToolkit() {
       <Main className='flex flex-1 flex-col gap-4'>
         <div>
           <h2 className='text-lg font-semibold tracking-tight'>Network Toolkit</h2>
-          <p className='text-xs text-muted-foreground'>Ping, port scanner, DNS lookup, SSL inspector, Wake-on-LAN</p>
+          <p className='text-xs text-muted-foreground'>Ping · Port Scanner · DNS · SSL · Wake-on-LAN · HTTP Headers · Subnet Calculator</p>
         </div>
 
         {/* Tool tabs */}
         <div className='flex gap-1 rounded-lg border border-border/50 bg-muted/30 p-1'>
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TABS.map(({ id, label, icon: Icon, pro: tabPro }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -643,6 +889,11 @@ export function NetworkToolkit() {
             >
               <Icon className='h-3.5 w-3.5' />
               {label}
+              {tabPro && !pro && (
+                <span className='rounded px-1 py-0.5 text-[8px] font-bold leading-none tracking-wide bg-violet-600/20 text-violet-400 border border-violet-500/30'>
+                  PRO
+                </span>
+              )}
             </button>
           ))}
         </div>

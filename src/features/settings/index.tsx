@@ -1,16 +1,19 @@
+import { useSearch } from '@tanstack/react-router'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
+import { AccountTab } from './tabs/account'
 import { GeneralTab } from './tabs/general'
 import { AppearanceTab } from './tabs/appearance'
 import { NotificationsTab } from './tabs/notifications'
-import { VaultTab } from './tabs/vault'
 import { StorageTab } from './tabs/storage'
 import { AboutTab } from './tabs/about'
 
 export function SettingsPage() {
+  const { tab } = useSearch({ from: '/_authenticated/settings/' })
+
   return (
     <>
       <Header fixed>
@@ -27,11 +30,11 @@ export function SettingsPage() {
           <p className='text-muted-foreground'>Manage your workspace and preferences.</p>
         </div>
 
-        <Tabs defaultValue='general' className='flex flex-col gap-4'>
+        <Tabs defaultValue={tab ?? 'general'} className='flex flex-col gap-4'>
           <TabsList className='w-fit'>
             <TabsTrigger value='general'>General</TabsTrigger>
+            <TabsTrigger value='account'>Account</TabsTrigger>
             <TabsTrigger value='notifications'>Notifications</TabsTrigger>
-            <TabsTrigger value='vault'>Vault</TabsTrigger>
             <TabsTrigger value='storage'>Storage</TabsTrigger>
             <TabsTrigger value='appearance'>Appearance</TabsTrigger>
             <TabsTrigger value='about'>About</TabsTrigger>
@@ -41,12 +44,12 @@ export function SettingsPage() {
             <GeneralTab />
           </TabsContent>
 
-          <TabsContent value='notifications' className='mt-0'>
-            <NotificationsTab />
+          <TabsContent value='account' className='mt-0'>
+            <AccountTab />
           </TabsContent>
 
-          <TabsContent value='vault' className='mt-0'>
-            <VaultTab />
+          <TabsContent value='notifications' className='mt-0'>
+            <NotificationsTab />
           </TabsContent>
 
           <TabsContent value='storage' className='mt-0'>

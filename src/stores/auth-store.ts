@@ -1,53 +1,65 @@
 import { create } from 'zustand'
-import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
-
-const ACCESS_TOKEN = 'thisisjustarandomstring'
-
-interface AuthUser {
-  accountNo: string
-  email: string
-  role: string[]
-  exp: number
-}
+import type { Session, User } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 
 interface AuthState {
   auth: {
-    user: AuthUser | null
-    setUser: (user: AuthUser | null) => void
+    session: Session | null
+    user: User | null
     accessToken: string
-    setAccessToken: (accessToken: string) => void
+    username: string | null
+    setSession: (session: Session | null) => void
+    setUsername: (username: string | null) => void
+    signOut: () => Promise<void>
+    // Legacy compat — used by existing route guard + nav-user
+    setUser: (user: User | null) => void
+    setAccessToken: (token: string) => void
     resetAccessToken: () => void
     reset: () => void
   }
 }
 
-export const useAuthStore = create<AuthState>()((set) => {
-  const cookieState = getCookie(ACCESS_TOKEN)
-  const initToken = cookieState ? JSON.parse(cookieState) : ''
-  return {
-    auth: {
-      user: null,
-      setUser: (user) =>
-        set((state) => ({ ...state, auth: { ...state.auth, user } })),
-      accessToken: initToken,
-      setAccessToken: (accessToken) =>
-        set((state) => {
-          setCookie(ACCESS_TOKEN, JSON.stringify(accessToken))
-          return { ...state, auth: { ...state.auth, accessToken } }
-        }),
-      resetAccessToken: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return { ...state, auth: { ...state.auth, accessToken: '' } }
-        }),
-      reset: () =>
-        set((state) => {
-          removeCookie(ACCESS_TOKEN)
-          return {
-            ...state,
-            auth: { ...state.auth, user: null, accessToken: '' },
-          }
-        }),
+export const useAuthStore = create<AuthState>()((set) => ({
+  auth: {
+    session: null,
+    user: null,
+    accessToken: '',
+    username: null,
+
+    setUsername: (username) =>
+      set((s) => ({ auth: { ...s.auth, username } })),
+
+    setSession: (session) =>
+      set((s) => ({
+        auth: {
+          ...s.auth,
+          session,
+          user: session?.user ?? null,
+          accessToken: session?.access_token ?? '',
+        },
+      })),
+
+    setUser: (user) =>
+      set((s) => ({ auth: { ...s.auth, user } })),
+
+    setAccessToken: (token) =>
+      set((s) => ({ auth: { ...s.auth, accessToken: token } })),
+
+    resetAccessToken: () =>
+      set((s) => ({ auth: { ...s.auth, accessToken: '' } })),
+
+    signOut: async () => {
+      await supabase.auth.signOut()
+      set((s) => ({
+        auth: { ...s.auth, session: null, user: null, accessToken: '', username: null },
+      }))
     },
-  }
-})
+
+    reset: () => {
+      supabase.auth.signOut()
+      set((s) => ({
+        auth: { ...s.auth, session: null, user: null, accessToken: '', username: null },
+      }))
+    },
+  },
+}))

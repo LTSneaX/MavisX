@@ -6,6 +6,7 @@ import { SearchProvider } from '@/context/search-provider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { SkipToMain } from '@/components/skip-to-main'
+import { WorkspaceOverlay } from '@/features/workspace-window'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -37,6 +38,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
           </SidebarInset>
         </SidebarProvider>
       </LayoutProvider>
+      <WorkspaceOverlay />
     </SearchProvider>
   )
 }

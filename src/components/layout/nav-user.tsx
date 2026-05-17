@@ -19,13 +19,22 @@ import {
 } from '@/components/ui/sidebar'
 import { SignOutDialog } from '@/components/sign-out-dialog'
 import { useAuthStore } from '@/stores/auth-store'
+import { usePlanStore } from '@/stores/plan-store'
+
+const PLAN_LABEL: Record<string, string> = {
+  free: 'Free',
+  pro: 'Pro',
+  enterprise: 'Enterprise',
+}
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const [open, setOpen] = useDialogState()
   const { auth } = useAuthStore()
-  const displayName = auth.user?.email?.split('@')[0] ?? 'Local User'
+  const plan = usePlanStore((s) => s.plan)
+  const displayName = auth.username ?? auth.user?.email?.split('@')[0] ?? 'Local User'
   const initials = displayName.slice(0, 2).toUpperCase()
+  const planLabel = PLAN_LABEL[plan] ?? 'Free'
 
   return (
     <>
@@ -44,7 +53,7 @@ export function NavUser() {
                 </Avatar>
                 <div className='grid flex-1 text-start text-sm leading-tight'>
                   <span className='truncate font-semibold'>{displayName}</span>
-                  <span className='truncate text-xs text-muted-foreground'>Local workspace</span>
+                  <span className='truncate text-xs text-muted-foreground'>{planLabel} plan</span>
                 </div>
               </SidebarMenuButton>
             </DropdownMenuTrigger>
@@ -63,20 +72,26 @@ export function NavUser() {
                   </Avatar>
                   <div className='grid flex-1 text-start text-sm leading-tight'>
                     <span className='truncate font-semibold'>{displayName}</span>
-                    <span className='truncate text-xs text-muted-foreground'>Local workspace</span>
+                    <span className='truncate text-xs text-muted-foreground'>{planLabel} plan</span>
                   </div>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
-                  <Link to='/settings'>
+                  <Link to='/settings' search={{ tab: 'account' }}>
                     <Settings className='h-4 w-4' />
-                    Settings
+                    Account
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to='/settings'>
+                  <Link to='/settings' search={{ tab: 'notifications' }}>
+                    <Shield className='h-4 w-4' />
+                    Notifications
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to='/vault'>
                     <Shield className='h-4 w-4' />
                     Vault
                   </Link>

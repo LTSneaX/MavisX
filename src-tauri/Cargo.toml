@@ -1,6 +1,6 @@
 [package]
 name = "mavisx"
-version = "0.1.0"
+version = "0.3.0"
 description = "MavisX — Infrastructure Monitoring Desktop App"
 authors = ["MavisX"]
 license = "MIT"

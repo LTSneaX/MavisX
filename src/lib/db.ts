@@ -262,10 +262,10 @@ export const db = {
     return invoke('generate_status_page')
   },
 
-  async getWorkspacePlan(): Promise<'free' | 'pro'> {
+  async getWorkspacePlan(): Promise<'free' | 'pro' | 'enterprise'> {
     const d = await getDb()
     const rows = await d.select<{ plan: string }[]>('SELECT plan FROM workspace WHERE id = \'local\'')
-    return (rows[0]?.plan ?? 'free') as 'free' | 'pro'
+    return (rows[0]?.plan ?? 'free') as 'free' | 'pro' | 'enterprise'
   },
 
   async getWorkspace(): Promise<{ name: string; plan: string; config: string | null }> {

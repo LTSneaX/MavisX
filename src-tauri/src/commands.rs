@@ -145,6 +145,17 @@ pub async fn record_heartbeat(app: tauri::AppHandle, monitor_id: String) -> Resu
 }
 
 #[tauri::command]
+pub async fn set_workspace_plan(app: tauri::AppHandle, plan: String) -> Result<(), String> {
+    let pool = engine::connect_db(&app).await?;
+    sqlx::query("UPDATE workspace SET plan = ? WHERE id = 'local'")
+        .bind(&plan)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     app.path()
         .app_data_dir()
@@ -306,6 +317,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 2,
             description: "workbench",
             sql: include_str!("../migrations/0002_workbench.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "vaults",
+            sql: include_str!("../migrations/0003_vaults.sql"),
             kind: MigrationKind::Up,
         },
     ]

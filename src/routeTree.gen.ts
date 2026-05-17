@@ -21,6 +21,8 @@ import { Route as authSignInRouteImport } from './routes/(auth)/sign-in'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedWebViewerIndexRouteImport } from './routes/_authenticated/web-viewer/index'
+import { Route as AuthenticatedVaultIndexRouteImport } from './routes/_authenticated/vault/index'
+import { Route as AuthenticatedUpgradeIndexRouteImport } from './routes/_authenticated/upgrade/index'
 import { Route as AuthenticatedStatusPageIndexRouteImport } from './routes/_authenticated/status-page/index'
 import { Route as AuthenticatedSshIndexRouteImport } from './routes/_authenticated/ssh/index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
@@ -100,6 +102,17 @@ const AuthenticatedWebViewerIndexRoute =
   AuthenticatedWebViewerIndexRouteImport.update({
     id: '/web-viewer/',
     path: '/web-viewer/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedVaultIndexRoute = AuthenticatedVaultIndexRouteImport.update({
+  id: '/vault/',
+  path: '/vault/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedUpgradeIndexRoute =
+  AuthenticatedUpgradeIndexRouteImport.update({
+    id: '/upgrade/',
+    path: '/upgrade/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedStatusPageIndexRoute =
@@ -244,6 +257,8 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/ssh/': typeof AuthenticatedSshIndexRoute
   '/status-page/': typeof AuthenticatedStatusPageIndexRoute
+  '/upgrade/': typeof AuthenticatedUpgradeIndexRoute
+  '/vault/': typeof AuthenticatedVaultIndexRoute
   '/web-viewer/': typeof AuthenticatedWebViewerIndexRoute
 }
 export interface FileRoutesByTo {
@@ -275,6 +290,8 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/ssh': typeof AuthenticatedSshIndexRoute
   '/status-page': typeof AuthenticatedStatusPageIndexRoute
+  '/upgrade': typeof AuthenticatedUpgradeIndexRoute
+  '/vault': typeof AuthenticatedVaultIndexRoute
   '/web-viewer': typeof AuthenticatedWebViewerIndexRoute
 }
 export interface FileRoutesById {
@@ -309,6 +326,8 @@ export interface FileRoutesById {
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/ssh/': typeof AuthenticatedSshIndexRoute
   '/_authenticated/status-page/': typeof AuthenticatedStatusPageIndexRoute
+  '/_authenticated/upgrade/': typeof AuthenticatedUpgradeIndexRoute
+  '/_authenticated/vault/': typeof AuthenticatedVaultIndexRoute
   '/_authenticated/web-viewer/': typeof AuthenticatedWebViewerIndexRoute
 }
 export interface FileRouteTypes {
@@ -343,6 +362,8 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/ssh/'
     | '/status-page/'
+    | '/upgrade/'
+    | '/vault/'
     | '/web-viewer/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -374,6 +395,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/ssh'
     | '/status-page'
+    | '/upgrade'
+    | '/vault'
     | '/web-viewer'
   id:
     | '__root__'
@@ -407,6 +430,8 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/'
     | '/_authenticated/ssh/'
     | '/_authenticated/status-page/'
+    | '/_authenticated/upgrade/'
+    | '/_authenticated/vault/'
     | '/_authenticated/web-viewer/'
   fileRoutesById: FileRoutesById
 }
@@ -506,6 +531,20 @@ declare module '@tanstack/react-router' {
       path: '/web-viewer'
       fullPath: '/web-viewer/'
       preLoaderRoute: typeof AuthenticatedWebViewerIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/vault/': {
+      id: '/_authenticated/vault/'
+      path: '/vault'
+      fullPath: '/vault/'
+      preLoaderRoute: typeof AuthenticatedVaultIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/upgrade/': {
+      id: '/_authenticated/upgrade/'
+      path: '/upgrade'
+      fullPath: '/upgrade/'
+      preLoaderRoute: typeof AuthenticatedUpgradeIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/status-page/': {
@@ -684,6 +723,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
   AuthenticatedSshIndexRoute: typeof AuthenticatedSshIndexRoute
   AuthenticatedStatusPageIndexRoute: typeof AuthenticatedStatusPageIndexRoute
+  AuthenticatedUpgradeIndexRoute: typeof AuthenticatedUpgradeIndexRoute
+  AuthenticatedVaultIndexRoute: typeof AuthenticatedVaultIndexRoute
   AuthenticatedWebViewerIndexRoute: typeof AuthenticatedWebViewerIndexRoute
 }
 
@@ -704,6 +745,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,
   AuthenticatedSshIndexRoute: AuthenticatedSshIndexRoute,
   AuthenticatedStatusPageIndexRoute: AuthenticatedStatusPageIndexRoute,
+  AuthenticatedUpgradeIndexRoute: AuthenticatedUpgradeIndexRoute,
+  AuthenticatedVaultIndexRoute: AuthenticatedVaultIndexRoute,
   AuthenticatedWebViewerIndexRoute: AuthenticatedWebViewerIndexRoute,
 }
 

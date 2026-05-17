@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isPlanPro } from '@/stores/plan-store'
 import { useForm, Controller, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -79,7 +80,8 @@ const schema = z.object({
   name: z.string().min(1, 'Name is required'),
   type: z.enum(['http', 'port', 'ping', 'dns', 'ssl', 'cron']),
   target: z.string().min(1, 'Target is required'),
-  interval_seconds: z.coerce.number().int().min(30).max(86400),
+  interval_seconds: z.coerce.number().int().min(30).max(86400)
+    .refine((v) => isPlanPro() || v >= 150, { message: 'Free plan minimum is 150 seconds (2.5 min). Upgrade to Pro for 30s intervals.' }),
   timeout_seconds: z.coerce.number().int().min(1).max(60),
   // HTTP-specific
   http_method: z.enum(['GET', 'HEAD', 'POST']).optional(),
@@ -449,8 +451,19 @@ export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }
           {/* Interval + Timeout */}
           <div className='grid grid-cols-2 gap-3'>
             <div className='flex flex-col gap-1.5'>
-              <Label htmlFor='m-interval'>Interval (s)</Label>
-              <Input id='m-interval' type='number' min={30} max={86400} {...form.register('interval_seconds')} />
+              <Label htmlFor='m-interval'>
+                Interval (s)
+                {!isPlanPro() && (
+                  <span className='ml-2 text-[10px] text-muted-foreground font-normal'>min 150s on Free</span>
+                )}
+              </Label>
+              <Input
+                id='m-interval'
+                type='number'
+                min={isPlanPro() ? 30 : 150}
+                max={86400}
+                {...form.register('interval_seconds')}
+              />
               {form.formState.errors.interval_seconds && (
                 <p className='text-destructive text-xs'>{form.formState.errors.interval_seconds.message}</p>
               )}

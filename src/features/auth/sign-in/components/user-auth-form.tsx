@@ -3,9 +3,11 @@ import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate } from '@tanstack/react-router'
-import { Loader2, Unlock } from 'lucide-react'
+import { Loader2, LogIn } from 'lucide-react'
 import { toast } from 'sonner'
+import { supabase, parsePlanFromToken } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth-store'
+import { usePlanStore } from '@/stores/plan-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,8 +22,8 @@ import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
 
 const formSchema = z.object({
-  username: z.string().min(1, 'Enter a display name.'),
-  passphrase: z.string().min(1, 'Enter your local passphrase.'),
+  email: z.string().email('Enter a valid email address.'),
+  password: z.string().min(1, 'Enter your password.'),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -37,23 +39,30 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { username: '', passphrase: '' },
+    defaultValues: { email: '', password: '' },
   })
 
-  function onSubmit(data: FormValues) {
+  async function onSubmit(data: FormValues) {
     setIsLoading(true)
-    setTimeout(() => {
-      setIsLoading(false)
-      auth.setUser({
-        accountNo: 'local-001',
-        email: data.username,
-        role: ['admin'],
-        exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    try {
+      const { data: result, error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
       })
-      auth.setAccessToken('local-session')
+
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+
+      auth.setSession(result.session)
+      usePlanStore.getState().setPlan(parsePlanFromToken(result.session!.access_token))
       navigate({ to: redirectTo || '/', replace: true })
-      toast.success(`Welcome back, ${data.username}!`)
-    }, 300)
+    } catch {
+      toast.error('Something went wrong. Try again.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -65,12 +74,17 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
       >
         <FormField
           control={form.control}
-          name='username'
+          name='email'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Display name</FormLabel>
+              <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder='Your name' autoComplete='username' {...field} />
+                <Input
+                  placeholder='you@example.com'
+                  type='email'
+                  autoComplete='email'
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -78,10 +92,10 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
         />
         <FormField
           control={form.control}
-          name='passphrase'
+          name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Local passphrase</FormLabel>
+              <FormLabel>Password</FormLabel>
               <FormControl>
                 <PasswordInput
                   placeholder='••••••••'
@@ -95,8 +109,8 @@ export function UserAuthForm({ className, redirectTo, ...props }: UserAuthFormPr
           )}
         />
         <Button className='mt-1' disabled={isLoading}>
-          {isLoading ? <Loader2 className='animate-spin' /> : <Unlock className='h-4 w-4' />}
-          Unlock
+          {isLoading ? <Loader2 className='animate-spin' /> : <LogIn className='h-4 w-4' />}
+          Sign in
         </Button>
       </form>
     </Form>

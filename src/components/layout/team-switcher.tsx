@@ -1,12 +1,12 @@
-import * as React from 'react'
-import { ChevronsUpDown, Plus } from 'lucide-react'
+import { ChevronsUpDown, Plus, Users } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -15,18 +15,20 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useWorkspaceStore } from '@/stores/workspace-store'
+import { usePlanStore } from '@/stores/plan-store'
+import { useWorkspaceWindowStore } from '@/stores/workspace-window-store'
+import { db } from '@/lib/db'
 
-type TeamSwitcherProps = {
-  teams: {
-    name: string
-    logo: React.ElementType
-    plan: string
-  }[]
-}
-
-export function TeamSwitcher({ teams }: TeamSwitcherProps) {
+export function TeamSwitcher() {
   const { isMobile } = useSidebar()
-  const [activeTeam, setActiveTeam] = React.useState(teams[0])
+  const { workspaces, activeWorkspace, setActiveWorkspace } = useWorkspaceStore()
+  const plan = usePlanStore((s) => s.plan)
+  const openWorkspace = useWorkspaceWindowStore((s) => s.openWorkspace)
+  const { data: localWorkspace } = useQuery({ queryKey: ['workspace'], queryFn: () => db.getWorkspace() })
+
+  const displayName = localWorkspace?.name ?? 'My Workspace'
+  const initial = displayName.slice(0, 2).toUpperCase()
 
   return (
     <SidebarMenu>
@@ -37,13 +39,11 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
               size='lg'
               className='data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground'
             >
-              <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground'>
-                <activeTeam.logo className='size-4' />
+              <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold'>
+                {initial}
               </div>
               <div className='grid flex-1 text-start text-sm leading-tight'>
-                <span className='truncate font-semibold'>
-                  {activeTeam.name}
-                </span>
+                <span className='truncate font-semibold'>{displayName}</span>
               </div>
               <ChevronsUpDown className='ms-auto' />
             </SidebarMenuButton>
@@ -54,29 +54,66 @@ export function TeamSwitcher({ teams }: TeamSwitcherProps) {
             side={isMobile ? 'bottom' : 'right'}
             sideOffset={4}
           >
-            <DropdownMenuLabel className='text-xs text-muted-foreground'>
-              Teams
-            </DropdownMenuLabel>
-            {teams.map((team, index) => (
-              <DropdownMenuItem
-                key={team.name}
-                onClick={() => setActiveTeam(team)}
-                className='gap-2 p-2'
-              >
-                <div className='flex size-6 items-center justify-center rounded-sm border'>
-                  <team.logo className='size-4 shrink-0' />
-                </div>
-                {team.name}
-                <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className='gap-2 p-2'>
-              <div className='flex size-6 items-center justify-center rounded-md border bg-background'>
-                <Plus className='size-4' />
-              </div>
-              <div className='font-medium text-muted-foreground'>Add team</div>
-            </DropdownMenuItem>
+            {workspaces.length > 0 ? (
+              <>
+                <DropdownMenuLabel className='text-xs text-muted-foreground'>Workspaces</DropdownMenuLabel>
+                {workspaces.map((ws) => (
+                  <DropdownMenuItem
+                    key={ws.id}
+                    onClick={() => { setActiveWorkspace(ws); openWorkspace(ws) }}
+                    className='gap-2 p-2'
+                  >
+                    <div className='flex size-6 items-center justify-center rounded-sm border text-[10px] font-bold'>
+                      {ws.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className='flex-1 truncate'>{ws.name}</span>
+                    {activeWorkspace?.id === ws.id && (
+                      <span className='text-[10px] text-violet-400'>Active</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className='gap-2 p-2'>
+                  <Link to='/cloud'>
+                    <div className='flex size-6 items-center justify-center rounded-md border bg-background'>
+                      <Plus className='size-4' />
+                    </div>
+                    <span className='font-medium text-muted-foreground'>Manage workspaces</span>
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            ) : plan === 'enterprise' || plan === 'pro' ? (
+              <>
+                <DropdownMenuLabel className='text-xs text-muted-foreground'>Workspaces</DropdownMenuLabel>
+                <DropdownMenuItem asChild className='gap-2 p-2'>
+                  <Link to='/cloud'>
+                    <div className='flex size-6 items-center justify-center rounded-md border bg-background'>
+                      <Plus className='size-4' />
+                    </div>
+                    <span className='font-medium text-muted-foreground'>Create workspace</span>
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuLabel className='text-xs text-muted-foreground'>Workspace</DropdownMenuLabel>
+                <DropdownMenuItem className='gap-2 p-2' disabled>
+                  <div className='flex size-6 items-center justify-center rounded-sm border text-[10px] font-bold'>
+                    {initial}
+                  </div>
+                  <span className='flex-1 truncate'>{displayName}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className='gap-2 p-2'>
+                  <Link to='/upgrade'>
+                    <div className='flex size-6 items-center justify-center rounded-md border bg-background'>
+                      <Users className='size-4' />
+                    </div>
+                    <span className='font-medium text-muted-foreground'>Upgrade for team workspaces</span>
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

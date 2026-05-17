@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
+import { usePlanStore } from '@/stores/plan-store'
 import {
   Collapsible,
   CollapsibleContent,
@@ -62,8 +63,18 @@ function NavBadge({ children }: { children: ReactNode }) {
   return <Badge className='rounded-full px-1 py-0 text-xs'>{children}</Badge>
 }
 
+function ProBadge() {
+  return (
+    <span className='ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-bold leading-none tracking-wide bg-violet-600/20 text-violet-400 border border-violet-500/30'>
+      PRO
+    </span>
+  )
+}
+
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
+  const plan = usePlanStore((s) => s.plan)
+  const showProBadge = item.pro && plan === 'free'
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -75,6 +86,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
           {item.icon && <item.icon />}
           <span>{item.title}</span>
           {item.badge && <NavBadge>{item.badge}</NavBadge>}
+          {showProBadge && <ProBadge />}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
