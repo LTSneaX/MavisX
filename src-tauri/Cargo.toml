@@ -69,3 +69,6 @@ async-trait = "0.1"
 # Network toolkit
 futures = "0.3"
 x509-cert = "0.2"
+
+# Docker manager
+bollard = "0.18"

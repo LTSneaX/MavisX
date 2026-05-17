@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { VaultCredentialPicker } from '@/components/vault-credential-picker'
 import {
   Folder,
   FileText,
@@ -115,7 +116,14 @@ function ConnectForm({
           />
         </div>
         <div className='flex flex-col gap-1.5'>
-          <Label className='text-xs text-muted-foreground'>Password</Label>
+          <div className='flex items-center justify-between'>
+            <Label className='text-xs text-muted-foreground'>Password</Label>
+            <VaultCredentialPicker
+              types={['password', 'username_password']}
+              onSelect={(secret) => setForm((f) => ({ ...f, password: secret }))}
+              className='border-border/60 bg-muted text-muted-foreground'
+            />
+          </div>
           <Input
             value={form.password}
             onChange={set('password')}

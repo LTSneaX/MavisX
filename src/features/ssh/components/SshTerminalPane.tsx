@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { VaultCredentialPicker } from '@/components/vault-credential-picker'
 import { Loader2, Terminal as TerminalIcon, X } from 'lucide-react'
 
 interface ConnectForm {
@@ -274,25 +275,37 @@ export function SshTerminalPane({
 
               {form.authMethod === 'password' ? (
                 <div>
-                  <Label className='text-xs text-zinc-400'>Password</Label>
+                  <div className='flex items-center justify-between mb-1'>
+                    <Label className='text-xs text-zinc-400'>Password</Label>
+                    <VaultCredentialPicker
+                      types={['password', 'username_password']}
+                      onSelect={(secret) => setForm(f => ({ ...f, password: secret }))}
+                    />
+                  </div>
                   <Input
                     type='password'
                     value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                     onKeyDown={e => e.key === 'Enter' && handleConnect()}
                     placeholder='••••••••'
-                    className='mt-1 h-8 border-zinc-700 bg-zinc-800 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50'
+                    className='h-8 border-zinc-700 bg-zinc-800 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50'
                   />
                 </div>
               ) : (
                 <div>
-                  <Label className='text-xs text-zinc-400'>Private key (PEM)</Label>
+                  <div className='flex items-center justify-between mb-1'>
+                    <Label className='text-xs text-zinc-400'>Private key (PEM)</Label>
+                    <VaultCredentialPicker
+                      types={['ssh_key']}
+                      onSelect={(secret) => setForm(f => ({ ...f, privateKey: secret }))}
+                    />
+                  </div>
                   <Textarea
                     value={form.privateKey}
                     onChange={e => setForm(f => ({ ...f, privateKey: e.target.value }))}
                     placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n...'}
                     rows={5}
-                    className='mt-1 border-zinc-700 bg-zinc-800 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50 resize-none'
+                    className='border-zinc-700 bg-zinc-800 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50 resize-none'
                   />
                 </div>
               )}

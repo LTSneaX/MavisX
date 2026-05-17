@@ -1,4 +1,5 @@
 mod commands;
+mod docker;
 mod engine;
 mod network;
 mod notify;
@@ -53,6 +54,15 @@ pub fn run() {
             // SSH exec (log viewer)
             ssh::ssh_exec,
             ssh::ssh_exec_stop,
+            // Docker manager
+            docker::docker_list_containers,
+            docker::docker_start,
+            docker::docker_stop,
+            docker::docker_restart,
+            docker::docker_remove,
+            docker::docker_logs,
+            docker::docker_list_images,
+            docker::docker_remove_image,
             // SFTP file manager
             sftp::sftp_connect,
             sftp::sftp_list_dir,
