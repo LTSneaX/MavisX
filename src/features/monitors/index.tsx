@@ -38,13 +38,14 @@ function MonitorsContent() {
   })
 
   async function handleSubmit(
-    values: { name: string; type: string; target: string; interval_seconds: number; timeout_seconds: number; config: string | null },
+    values: { name: string; type: string; target: string; interval_seconds: number; timeout_seconds: number; config: string | null | undefined },
     id?: string
   ) {
+    const config = values.config ?? undefined
     if (id) {
-      await updateMutation.mutateAsync({ id, ...values })
+      await updateMutation.mutateAsync({ id, ...values, config })
     } else {
-      await createMutation.mutateAsync(values)
+      await createMutation.mutateAsync({ ...values, config })
     }
   }
 

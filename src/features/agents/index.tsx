@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { db, type Connection } from '@/lib/db'
+import { db } from '@/lib/db'
 import { sshExec, sshExecStop, type SshAuth, type SshEvent } from '@/lib/ssh'
 import { vault } from '@/lib/vault'
 import { VaultCredentialPicker } from '@/components/vault-credential-picker'

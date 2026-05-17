@@ -63,14 +63,13 @@ function LogsModal({
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    setLines([])
+    let cancelled = false
     dockerLogs(container.id, 200, (line) => {
-      setLines((prev) => [...prev, line])
+      if (!cancelled) setLines((prev) => [...prev, line])
     })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
+      .catch((e) => { if (!cancelled) setError(String(e)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [container.id])
 
   useEffect(() => {
@@ -123,26 +122,24 @@ function ContainersTab() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [logsTarget, setLogsTarget] = useState<ContainerInfo | null>(null)
+  const [tick, setTick] = useState(0)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setContainers(await dockerListContainers(showAll))
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [showAll])
+  const refresh = useCallback(() => setTick((t) => t + 1), [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    let cancelled = false
+    dockerListContainers(showAll)
+      .then((data) => { if (!cancelled) { setContainers(data); setError(null) } })
+      .catch((e) => { if (!cancelled) setError(String(e)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [showAll, tick])
 
   async function act(id: string, fn: () => Promise<void>) {
     setBusy((s) => new Set(s).add(id))
     try {
       await fn()
-      await refresh()
+      refresh()
     } catch (e) {
       setError(String(e))
     } finally {
@@ -326,26 +323,24 @@ function ImagesTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<Set<string>>(new Set())
+  const [tick, setTick] = useState(0)
 
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setImages(await dockerListImages())
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const refresh = useCallback(() => setTick((t) => t + 1), [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    let cancelled = false
+    dockerListImages()
+      .then((data) => { if (!cancelled) { setImages(data); setError(null) } })
+      .catch((e) => { if (!cancelled) setError(String(e)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [tick])
 
   async function removeImage(id: string) {
     setBusy((s) => new Set(s).add(id))
     try {
       await dockerRemoveImage(id, false)
-      await refresh()
+      refresh()
     } catch (e) {
       setError(String(e))
     } finally {

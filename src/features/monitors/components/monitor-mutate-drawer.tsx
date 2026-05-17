@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useForm, Controller, useWatch } from 'react-hook-form'
+import { useForm, Controller, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
@@ -187,7 +187,7 @@ export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }
   const [isTesting, setIsTesting] = useState(false)
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as Resolver<FormValues>,
     defaultValues: {
       name: '',
       type: 'http',

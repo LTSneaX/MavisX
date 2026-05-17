@@ -259,7 +259,7 @@ const schema = z.object({
   protocols:  z.array(z.string()).min(1, 'Select at least one protocol'),
   host:       z.string().min(1, 'Host is required'),
   group_name: z.string().optional(),
-  proto:      z.record(z.any()).optional(),
+  proto:      z.record(z.string(), z.any()).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -306,21 +306,21 @@ export function ConnectionMutateDrawer({ open, onOpenChange, currentRow, onSubmi
     } else {
       setValue('protocols', [...cur, p], { shouldValidate: true })
       const def = ALL_PROTOCOLS.find(x => x.value === p)?.defaultPort
-      if (def) setValue(`proto.${p}.port`, def)
+      if (def) setValue(`proto.${p}.port` as Parameters<typeof setValue>[0], def as never)
     }
   }
 
   async function onValid(values: FormValues) {
     const inputs: SaveConnectionInput[] = values.protocols.map(proto => {
-      const cfg = values.proto?.[proto] ?? {}
+      const cfg = (values.proto?.[proto] ?? {}) as Record<string, unknown>
       const { port, username, ...rest } = cfg
       return {
         id:         isEdit && currentRow?.type === proto ? currentRow.id : undefined,
         name:       values.name,
         type:       proto as ConnectionType,
-        host:       proto !== 'web' ? values.host : (cfg.url || values.host),
+        host:       proto !== 'web' ? values.host : (String(cfg.url ?? '') || values.host),
         port:       port ? Number(port) : undefined,
-        username:   username || undefined,
+        username:   username ? String(username) : undefined,
         config:     Object.keys(rest).length ? JSON.stringify(rest) : undefined,
         group_name: values.group_name || undefined,
       }
@@ -389,8 +389,8 @@ export function ConnectionMutateDrawer({ open, onOpenChange, currentRow, onSubmi
                 <SettingsComp
                   key={proto}
                   prefix={`proto.${proto}`}
-                  register={register}
-                  setValue={setValue}
+                  register={register as ProtoSettingsProps['register']}
+                  setValue={setValue as ProtoSettingsProps['setValue']}
                   watch={watch}
                 />
               )

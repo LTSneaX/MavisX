@@ -15,7 +15,7 @@ export function VaultCredentialPicker({ types, onSelect, className }: Props) {
   const [items, setItems] = useState<VaultItemMeta[]>([])
 
   useEffect(() => {
-    if (!isUnlocked) { setItems([]); return }
+    if (!isUnlocked) return
     vault.listItems().then((all) => setItems(all.filter((i) => types.includes(i.type))))
   }, [isUnlocked, types.join(',')])
 

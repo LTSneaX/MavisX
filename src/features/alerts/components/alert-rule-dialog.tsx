@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useForm, Controller, useWatch } from 'react-hook-form'
+import { useForm, Controller, useWatch, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
@@ -221,7 +221,7 @@ const formSchema = z.object({
   threshold: z.coerce.number().int().min(1).max(10),
   channel: z.enum(CHANNEL_IDS),
   enabled: z.boolean(),
-  cfg: z.record(z.string()),
+  cfg: z.record(z.string(), z.string()),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -241,7 +241,7 @@ export function AlertRuleDialog({ open, onOpenChange, rule, monitors, plan = 'fr
   const isEdit = !!rule
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema) as Resolver<FormValues>,
     defaultValues: {
       monitor_id: null,
       condition: 'down',

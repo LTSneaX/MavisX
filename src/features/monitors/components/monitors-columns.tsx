@@ -133,7 +133,7 @@ export const monitorsColumns: ColumnDef<MonitorWithStatus>[] = [
     header: 'Type',
     cell: ({ row }) => (
       <Badge variant='outline' className='font-mono text-[11px] tracking-widest'>
-        {MONITOR_TYPE_LABELS[row.getValue('type')] ?? row.getValue('type')}
+        {MONITOR_TYPE_LABELS[row.getValue<string>('type')] ?? row.getValue<string>('type')}
       </Badge>
     ),
   },
