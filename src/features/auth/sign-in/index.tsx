@@ -16,9 +16,9 @@ export function SignIn() {
     <AuthLayout>
       <Card className='max-w-sm gap-4'>
         <CardHeader>
-          <CardTitle className='text-lg tracking-tight'>Sign in</CardTitle>
+          <CardTitle className='text-lg tracking-tight'>Unlock MavisX</CardTitle>
           <CardDescription>
-            Enter your credentials to access your workspace.
+            Local desktop session — your data never leaves this machine.
           </CardDescription>
         </CardHeader>
         <CardContent>
