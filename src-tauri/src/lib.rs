@@ -2,6 +2,7 @@ mod commands;
 mod engine;
 mod network;
 mod notify;
+mod sftp;
 mod ssh;
 mod tray;
 mod vault;
@@ -26,6 +27,7 @@ pub fn run() {
         .manage(vault::VaultKey(std::sync::Mutex::new(None)))
         .manage(ssh::SshSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(ssh::SshExecSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
+        .manage(sftp::SftpSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             commands::test_monitor,
             commands::check_monitor_now,
@@ -51,6 +53,15 @@ pub fn run() {
             // SSH exec (log viewer)
             ssh::ssh_exec,
             ssh::ssh_exec_stop,
+            // SFTP file manager
+            sftp::sftp_connect,
+            sftp::sftp_list_dir,
+            sftp::sftp_read_file,
+            sftp::sftp_write_file,
+            sftp::sftp_delete,
+            sftp::sftp_mkdir,
+            sftp::sftp_rename,
+            sftp::sftp_disconnect,
             // Network toolkit
             network::ping_host,
             network::port_scan,

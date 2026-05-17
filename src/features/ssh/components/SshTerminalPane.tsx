@@ -7,13 +7,16 @@ import { sshConnect, sshSendInput, sshResize, sshDisconnect, type SshAuth } from
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Loader2, Terminal as TerminalIcon, X } from 'lucide-react'
 
 interface ConnectForm {
   host: string
   port: string
   username: string
+  authMethod: 'password' | 'key'
   password: string
+  privateKey: string
 }
 
 interface SshTerminalPaneProps {
@@ -42,7 +45,9 @@ export function SshTerminalPane({
     host: initialHost,
     port: String(initialPort),
     username: initialUsername,
+    authMethod: 'password',
     password: '',
+    privateKey: '',
   })
 
   // Initialize xterm when component mounts
@@ -119,7 +124,10 @@ export function SshTerminalPane({
     setConnecting(true)
     setError(null)
 
-    const auth: SshAuth = { method: 'password', password: form.password }
+    const auth: SshAuth =
+      form.authMethod === 'key'
+        ? { method: 'key', private_key_pem: form.privateKey }
+        : { method: 'password', password: form.password }
 
     try {
       const sessionId = await sshConnect({
@@ -253,16 +261,41 @@ export function SshTerminalPane({
               </div>
 
               <div>
-                <Label className='text-xs text-zinc-400'>Password</Label>
-                <Input
-                  type='password'
-                  value={form.password}
-                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && handleConnect()}
-                  placeholder='••••••••'
-                  className='mt-1 h-8 border-zinc-700 bg-zinc-800 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50'
-                />
+                <Label className='text-xs text-zinc-400'>Auth method</Label>
+                <select
+                  value={form.authMethod}
+                  onChange={e => setForm(f => ({ ...f, authMethod: e.target.value as 'password' | 'key' }))}
+                  className='mt-1 h-8 w-full rounded-md border border-zinc-700 bg-zinc-800 px-2 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500/50'
+                >
+                  <option value='password'>Password</option>
+                  <option value='key'>Private key (PEM)</option>
+                </select>
               </div>
+
+              {form.authMethod === 'password' ? (
+                <div>
+                  <Label className='text-xs text-zinc-400'>Password</Label>
+                  <Input
+                    type='password'
+                    value={form.password}
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleConnect()}
+                    placeholder='••••••••'
+                    className='mt-1 h-8 border-zinc-700 bg-zinc-800 text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50'
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label className='text-xs text-zinc-400'>Private key (PEM)</Label>
+                  <Textarea
+                    value={form.privateKey}
+                    onChange={e => setForm(f => ({ ...f, privateKey: e.target.value }))}
+                    placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----\n...'}
+                    rows={5}
+                    className='mt-1 border-zinc-700 bg-zinc-800 font-mono text-xs text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-emerald-500/50 resize-none'
+                  />
+                </div>
+              )}
 
               {error && (
                 <p className='rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400'>
@@ -273,7 +306,12 @@ export function SshTerminalPane({
               <Button
                 className='mt-1 h-8 w-full bg-emerald-600 text-xs font-medium text-white hover:bg-emerald-500'
                 onClick={handleConnect}
-                disabled={connecting || !form.host || !form.username}
+                disabled={
+                  connecting ||
+                  !form.host ||
+                  !form.username ||
+                  (form.authMethod === 'password' ? !form.password : !form.privateKey.trim())
+                }
               >
                 {connecting ? (
                   <>

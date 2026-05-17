@@ -60,9 +60,10 @@ rustls-pki-types = "1"
 tokio-rustls = "0.26"
 webpki-roots = "0.26"
 
-# SSH terminal
+# SSH terminal + SFTP
 russh = "0.45"
 russh-keys = "0.45"
+russh-sftp = "2"
 async-trait = "0.1"
 
 # Network toolkit
