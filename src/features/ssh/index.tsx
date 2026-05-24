@@ -33,6 +33,8 @@ export function SshTerminalPage() {
     }
     return [{ id: 'tab-1', label: 'New session', host: '', port: 22, username: '' }]
   })
+  const wsWorkspaceId = search.ws_workspace_id
+  const wsVaultItemId = search.ws_vault_item_id
   const [activeTab, setActiveTab] = useState<string>('tab-1')
 
   const addTab = useCallback(() => {
@@ -130,6 +132,8 @@ export function SshTerminalPage() {
               initialHost={tab.host}
               initialPort={tab.port}
               initialUsername={tab.username}
+              wsWorkspaceId={tab.id === 'tab-1' ? wsWorkspaceId : undefined}
+              wsVaultItemId={tab.id === 'tab-1' ? wsVaultItemId : undefined}
               onConnected={(host, username) =>
                 updateTabLabel(tab.id, `${username}@${host}`)
               }

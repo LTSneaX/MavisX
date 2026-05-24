@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Container, FolderOpen, Globe, Monitor, Plus,
   Server, Terminal, Wifi,
-  MoreHorizontal, Pencil, Trash2,
+  MoreHorizontal, Pencil, Trash2, Loader2,
 } from 'lucide-react'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
+import { portScan } from '@/lib/network'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -24,15 +25,17 @@ import { ConnectionMutateDrawer } from './components/connection-mutate-drawer'
 import { ConnectionDeleteDialog } from './components/connection-delete-dialog'
 
 const TYPE_META: Record<ConnectionType, { label: string; icon: React.ElementType; color: string; available: boolean }> = {
-  ssh:    { label: 'SSH',    icon: Terminal,   color: 'text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10', available: true  },
-  sftp:   { label: 'SFTP',  icon: FolderOpen, color: 'text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/10',         available: false },
-  ftp:    { label: 'FTP',   icon: FolderOpen, color: 'text-blue-400 border-blue-500/30 hover:bg-blue-500/10',         available: false },
-  rdp:    { label: 'RDP',   icon: Monitor,    color: 'text-violet-400 border-violet-500/30 hover:bg-violet-500/10',   available: false },
-  vnc:    { label: 'VNC',   icon: Monitor,    color: 'text-purple-400 border-purple-500/30 hover:bg-purple-500/10',   available: false },
-  telnet: { label: 'Telnet',icon: Terminal,   color: 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10',     available: false },
-  docker: { label: 'Docker',icon: Container,  color: 'text-sky-400 border-sky-500/30 hover:bg-sky-500/10',           available: false },
-  web:    { label: 'Web',   icon: Globe,      color: 'text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10',   available: true  },
+  ssh:    { label: 'SSH',    icon: Terminal,   color: 'text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10', available: true },
+  sftp:   { label: 'SFTP',  icon: FolderOpen, color: 'text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/10',         available: true },
+  ftp:    { label: 'FTP',   icon: FolderOpen, color: 'text-blue-400 border-blue-500/30 hover:bg-blue-500/10',         available: true },
+  rdp:    { label: 'RDP',   icon: Monitor,    color: 'text-violet-400 border-violet-500/30 hover:bg-violet-500/10',   available: true },
+  vnc:    { label: 'VNC',   icon: Monitor,    color: 'text-purple-400 border-purple-500/30 hover:bg-purple-500/10',   available: true },
+  telnet: { label: 'Telnet',icon: Terminal,   color: 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10',     available: true },
+  docker: { label: 'Docker',icon: Container,  color: 'text-sky-400 border-sky-500/30 hover:bg-sky-500/10',           available: true },
+  web:    { label: 'Web',   icon: Globe,      color: 'text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10',   available: true },
 }
+
+type TestStatus = 'idle' | 'testing' | 'open' | 'closed'
 
 // Group connections by host — same host = one card, multiple protocol buttons
 type HostGroup = {
@@ -65,23 +68,41 @@ function ProtocolButton({ conn }: { conn: Connection }) {
   const navigate = useNavigate()
 
   async function handleConnect() {
-    if (conn.type === 'web' && conn.host) {
+    if (!conn.host) return
+
+    if (conn.type === 'ssh') {
+      navigate({ to: '/ssh', search: { host: conn.host, port: conn.port ?? 22, username: conn.username ?? '' } })
+      return
+    }
+    if (conn.type === 'sftp') {
+      navigate({ to: '/files', search: { host: conn.host, port: String(conn.port ?? 22), username: conn.username ?? '' } as never })
+      return
+    }
+    if (conn.type === 'ftp') {
+      navigate({ to: '/files', search: { host: conn.host, port: String(conn.port ?? 21), username: conn.username ?? '' } as never })
+      return
+    }
+    if (conn.type === 'web') {
       const url = conn.host.startsWith('http') ? conn.host : `https://${conn.host}`
-      await shellOpen(url)
+      navigate({ to: '/web-viewer', search: { url, name: conn.name } as never })
       return
     }
-    if (conn.type === 'ssh' && conn.host) {
-      navigate({
-        to: '/ssh',
-        search: {
-          host: conn.host,
-          port: conn.port ?? 22,
-          username: conn.username ?? '',
-        },
-      })
+    if (conn.type === 'docker') {
+      navigate({ to: '/docker' })
       return
     }
-    // Other protocols: Phase 1+
+    if (conn.type === 'rdp') {
+      await shellOpen(`rdp:full%20address=s:${conn.host}:${conn.port ?? 3389}`)
+      return
+    }
+    if (conn.type === 'vnc') {
+      await shellOpen(`vnc://${conn.host}:${conn.port ?? 5900}`)
+      return
+    }
+    if (conn.type === 'telnet') {
+      await shellOpen(`telnet://${conn.host}:${conn.port ?? 23}`)
+      return
+    }
   }
 
   return (
@@ -90,11 +111,10 @@ function ProtocolButton({ conn }: { conn: Connection }) {
       size='sm'
       className={`h-7 gap-1.5 border px-2.5 text-xs font-medium transition-colors ${meta.color}`}
       onClick={handleConnect}
-      title={meta.available ? `Connect via ${meta.label}` : `${meta.label} — coming in Phase 1`}
+      title={`Connect via ${meta.label}`}
     >
       <Icon className='h-3 w-3' />
       {meta.label}
-      {!meta.available && <span className='ml-0.5 text-[9px] opacity-50'>soon</span>}
     </Button>
   )
 }
@@ -102,6 +122,8 @@ function ProtocolButton({ conn }: { conn: Connection }) {
 function HostCard({ group }: { group: HostGroup }) {
   const { setOpen, setCurrentRow } = useConnections()
   const firstConn = group.connections[0]
+  const [testStatus, setTestStatus] = useState<TestStatus>('idle')
+
   const accentMap: Record<ConnectionType, string> = {
     ssh: 'bg-emerald-500', sftp: 'bg-cyan-500', ftp: 'bg-blue-500',
     rdp: 'bg-violet-500', vnc: 'bg-purple-500', telnet: 'bg-amber-500',
@@ -109,11 +131,26 @@ function HostCard({ group }: { group: HostGroup }) {
   }
   const accent = accentMap[firstConn.type]
 
+  const handleTest = useCallback(async () => {
+    if (!firstConn.host || testStatus === 'testing') return
+    const port = firstConn.port ?? 22
+    setTestStatus('testing')
+    try {
+      const results = await portScan(firstConn.host, [port], 3000)
+      setTestStatus(results[0]?.open ? 'open' : 'closed')
+    } catch {
+      setTestStatus('closed')
+    }
+  }, [firstConn.host, firstConn.port, testStatus])
+
   return (
     <div className='group/card relative flex items-center gap-4 rounded-lg border border-border/50 bg-card px-4 py-3 transition-colors hover:border-border'>
       <div className={`absolute left-0 top-0 h-full w-[3px] rounded-l-lg ${accent}`} />
       <div className='min-w-0 flex-1'>
-        <span className='text-sm font-medium'>{group.displayName}</span>
+        <div className='flex items-center gap-2'>
+          <span className='text-sm font-medium'>{group.displayName}</span>
+          <HealthDot status={testStatus} />
+        </div>
         {firstConn.username
           ? <p className='font-mono text-xs text-muted-foreground'>{firstConn.username}@{firstConn.host}{firstConn.port ? `:${firstConn.port}` : ''}</p>
           : group.host !== group.displayName && <p className='font-mono text-xs text-muted-foreground'>{group.host}</p>
@@ -121,6 +158,17 @@ function HostCard({ group }: { group: HostGroup }) {
       </div>
       <div className='flex flex-wrap items-center gap-1.5'>
         {group.connections.map(c => <ProtocolButton key={c.id} conn={c} />)}
+        <button
+          onClick={handleTest}
+          disabled={testStatus === 'testing'}
+          title='Test TCP reachability'
+          className='flex h-7 items-center gap-1 rounded border border-border/50 px-2 text-[11px] text-muted-foreground transition-colors hover:border-border hover:text-foreground disabled:opacity-50'
+        >
+          {testStatus === 'testing'
+            ? <Loader2 className='h-3 w-3 animate-spin' />
+            : <Wifi className='h-3 w-3' />}
+          Test
+        </button>
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -158,6 +206,13 @@ function HostCard({ group }: { group: HostGroup }) {
       </DropdownMenu>
     </div>
   )
+}
+
+function HealthDot({ status }: { status: TestStatus }) {
+  if (status === 'idle') return null
+  if (status === 'testing') return <span className='h-2 w-2 animate-pulse rounded-full bg-amber-400' />
+  if (status === 'open')    return <span className='h-2 w-2 rounded-full bg-emerald-400' title='Port reachable' />
+  return <span className='h-2 w-2 rounded-full bg-red-500' title='Port unreachable' />
 }
 
 function GroupSection({ group, hosts }: { group: string | null; hosts: HostGroup[] }) {

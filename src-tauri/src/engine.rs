@@ -19,6 +19,7 @@ pub struct MonitorRow {
     pub interval_seconds: i64,
     pub timeout_seconds: i64,
     pub config: Option<String>,
+    pub degraded_threshold_ms: Option<i64>,
 }
 
 pub struct CheckOutcome {
@@ -159,7 +160,7 @@ async fn run_cycle(pool: &SqlitePool, app: &AppHandle) -> Result<(), Box<dyn std
     let min_interval: i64 = if plan == "pro" || plan == "enterprise" { 30 } else { 150 };
 
     let monitors: Vec<MonitorRow> = sqlx::query_as(
-        r#"SELECT id, "type" AS monitor_type, target, interval_seconds, timeout_seconds, config
+        r#"SELECT id, "type" AS monitor_type, target, interval_seconds, timeout_seconds, config, degraded_threshold_ms
            FROM monitors WHERE enabled = 1"#,
     )
     .fetch_all(pool)
@@ -194,12 +195,24 @@ async fn run_cycle(pool: &SqlitePool, app: &AppHandle) -> Result<(), Box<dyn std
         }
     }
 
+    run_workspace_cycle(app).await;
+
     Ok(())
 }
 
 pub async fn run_check_and_save(monitor: MonitorRow, pool: SqlitePool, app: AppHandle) {
     let timeout = Duration::from_secs(monitor.timeout_seconds.max(1) as u64);
     let outcome = dispatch_check(&monitor.monitor_type, &monitor.target, timeout, monitor.config.as_deref()).await;
+
+    // Apply degraded threshold — upgrade "up" → "degraded" if response_ms exceeds threshold
+    let effective_status = if outcome.status == "up" {
+        match (monitor.degraded_threshold_ms, outcome.response_ms) {
+            (Some(threshold), Some(ms)) if ms > threshold => "degraded",
+            _ => outcome.status,
+        }
+    } else {
+        outcome.status
+    };
 
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -218,7 +231,7 @@ pub async fn run_check_and_save(monitor: MonitorRow, pool: SqlitePool, app: AppH
     .bind(&id)
     .bind(&monitor.id)
     .bind(&now)
-    .bind(outcome.status)
+    .bind(effective_status)
     .bind(outcome.response_ms)
     .bind(&outcome.detail)
     .execute(&pool)
@@ -230,13 +243,50 @@ pub async fn run_check_and_save(monitor: MonitorRow, pool: SqlitePool, app: AppH
 
     info!(
         "[engine] {} {} -> {} ({:?}ms)",
-        monitor.monitor_type, monitor.target, outcome.status, outcome.response_ms
+        monitor.monitor_type, monitor.target, effective_status, outcome.response_ms
     );
 
-    let went_down = outcome.status == "down" && prev_status.as_deref() != Some("down");
-    let came_up = outcome.status == "up" && prev_status.as_deref() == Some("down");
+    let went_down = effective_status == "down" && prev_status.as_deref() != Some("down");
+    let came_up = (effective_status == "up" || effective_status == "degraded")
+        && prev_status.as_deref() == Some("down");
 
-    if went_down {
+    // Check if a maintenance window is currently active for this monitor
+    let in_maintenance: bool = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM maintenance_windows
+           WHERE (monitor_id = ? OR monitor_id IS NULL)
+             AND starts_at <= ?
+             AND ends_at >= ?"#,
+    )
+    .bind(&monitor.id)
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(&pool)
+    .await
+    .map(|n: i64| n > 0)
+    .unwrap_or(false);
+
+    if came_up {
+        let _ = sqlx::query(
+            "UPDATE incidents SET status = 'resolved', resolved_at = ? WHERE monitor_id = ? AND status = 'open'",
+        )
+        .bind(&now)
+        .bind(&monitor.id)
+        .execute(&pool)
+        .await;
+        info!("[engine] Incident resolved for {}", monitor.id);
+
+        if !in_maintenance {
+            let _ = app
+                .notification()
+                .builder()
+                .title("MavisX")
+                .body(&format!("{} is back UP", monitor.target))
+                .show();
+            crate::notify::notify_up(&pool, &monitor.id, &monitor.target).await;
+        }
+    }
+
+    if went_down && !in_maintenance {
         let incident_id = Uuid::new_v4().to_string();
         let _ = sqlx::query(
             "INSERT INTO incidents (id, monitor_id, started_at, status, cause) VALUES (?, ?, ?, 'open', ?)",
@@ -257,24 +307,118 @@ pub async fn run_check_and_save(monitor: MonitorRow, pool: SqlitePool, app: AppH
         let _ = app.notification().builder().title("MavisX Alert").body(&body).show();
         crate::notify::notify_down(&pool, &monitor.id, &monitor.target, outcome.detail.as_deref()).await;
     }
+}
 
-    if came_up {
-        let _ = sqlx::query(
-            "UPDATE incidents SET status = 'resolved', resolved_at = ? WHERE monitor_id = ? AND status = 'open'",
-        )
-        .bind(&now)
-        .bind(&monitor.id)
-        .execute(&pool)
-        .await;
-        info!("[engine] Incident resolved for {}", monitor.id);
+// ─── Workspace monitor cycle ──────────────────────────────────────────────────
 
-        let _ = app
-            .notification()
-            .builder()
-            .title("MavisX")
-            .body(&format!("{} is back UP", monitor.target))
-            .show();
-        crate::notify::notify_up(&pool, &monitor.id, &monitor.target).await;
+#[derive(Debug, Clone, serde::Deserialize)]
+struct WorkspaceMonitorRow {
+    id: String,
+    #[serde(rename = "type")]
+    monitor_type: String,
+    target: String,
+    interval_seconds: i64,
+    timeout_seconds: i64,
+    config: Option<serde_json::Value>,
+    last_checked_at: Option<String>,
+}
+
+pub async fn run_workspace_cycle(app: &AppHandle) {
+    let state = app.state::<crate::SupabaseState>();
+    let session = {
+        let lock = state.0.lock().unwrap();
+        lock.clone()
+    };
+    let Some(session) = session else { return };
+
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => { error!("[ws-engine] Failed to build client: {e}"); return; }
+    };
+
+    let resp = match client
+        .get(format!(
+            "{}/rest/v1/workspace_monitors?enabled=eq.true&select=id,type,target,interval_seconds,timeout_seconds,config,last_checked_at",
+            session.url
+        ))
+        .header("apikey", &session.anon_key)
+        .header("Authorization", format!("Bearer {}", session.access_token))
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => { error!("[ws-engine] Fetch failed: {e}"); return; }
+    };
+
+    let monitors: Vec<WorkspaceMonitorRow> = match resp.json().await {
+        Ok(m) => m,
+        Err(e) => { error!("[ws-engine] Parse failed: {e}"); return; }
+    };
+
+    let now = Utc::now();
+
+    for monitor in monitors {
+        let is_due = match &monitor.last_checked_at {
+            None => true,
+            Some(ts) => match ts.parse::<chrono::DateTime<Utc>>() {
+                Ok(last) => (now - last).num_seconds() >= monitor.interval_seconds,
+                Err(_) => true,
+            },
+        };
+
+        if !is_due { continue; }
+
+        let session_clone = session.clone();
+        let client_clone = client.clone();
+
+        tokio::spawn(async move {
+            let timeout = Duration::from_secs(monitor.timeout_seconds.max(1) as u64);
+            let config_str = monitor.config.as_ref().map(|v| v.to_string());
+            let outcome = dispatch_check(
+                &monitor.monitor_type,
+                &monitor.target,
+                timeout,
+                config_str.as_deref(),
+            ).await;
+
+            #[derive(serde::Serialize)]
+            struct RpcArgs {
+                p_id: String,
+                p_status: String,
+                p_last_checked_at: String,
+                p_response_ms: Option<i64>,
+                p_detail: Option<String>,
+            }
+
+            let args = RpcArgs {
+                p_id: monitor.id.clone(),
+                p_status: outcome.status.to_string(),
+                p_last_checked_at: Utc::now().to_rfc3339(),
+                p_response_ms: outcome.response_ms,
+                p_detail: outcome.detail,
+            };
+
+            let result = client_clone
+                .post(format!("{}/rest/v1/rpc/record_workspace_monitor_result", session_clone.url))
+                .header("apikey", &session_clone.anon_key)
+                .header("Authorization", format!("Bearer {}", session_clone.access_token))
+                .header("Content-Type", "application/json")
+                .json(&args)
+                .send()
+                .await;
+
+            match result {
+                Ok(r) if r.status().is_success() => {
+                    info!("[ws-engine] {} {} -> {}", monitor.monitor_type, monitor.target, outcome.status);
+                }
+                Ok(r) => { error!("[ws-engine] RPC returned {}", r.status()); }
+                Err(e) => { error!("[ws-engine] RPC request failed: {e}"); }
+            }
+        });
     }
 }
 

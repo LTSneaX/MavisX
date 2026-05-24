@@ -1,219 +1,266 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { open } from '@tauri-apps/plugin-shell'
-import { Globe, Copy, ExternalLink, Sparkles, Check, RefreshCw, Loader2 } from 'lucide-react'
+import { Globe, Copy, ExternalLink, Check, RefreshCw, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
+import { ProfileDropdown } from '@/components/profile-dropdown'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
 import { db } from '@/lib/db'
+import { usePlanStore } from '@/stores/plan-store'
+import { toast } from 'sonner'
 
-function ProGateCard() {
-  return (
-    <Card className='border-primary/30 bg-primary/5'>
-      <CardHeader>
-        <div className='flex items-center gap-2'>
-          <Sparkles className='text-primary h-5 w-5' />
-          <CardTitle>Pro Feature</CardTitle>
-          <Badge className='ml-1'>PRO</Badge>
-        </div>
-        <CardDescription>
-          Generate a public status page that you can host anywhere — share it with your team
-          or embed it on your site.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className='flex flex-col gap-4'>
-        <div className='grid grid-cols-1 gap-2 text-sm'>
-          {[
-            'Beautiful, dark-themed HTML file — no dependencies',
-            'Shows live status for all your monitors',
-            'Host it on GitHub Pages, Nginx, Cloudflare Pages, anywhere',
-            'One-click regenerate whenever you need a fresh snapshot',
-          ].map((f) => (
-            <div key={f} className='flex items-start gap-2'>
-              <Check className='text-primary mt-0.5 h-4 w-4 shrink-0' />
-              <span className='text-muted-foreground'>{f}</span>
-            </div>
-          ))}
-        </div>
-        <Separator />
-        <div className='rounded-lg border bg-muted/40 p-4'>
-          <p className='text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide'>Preview</p>
-          <StatusPagePreview />
-        </div>
-        <Button className='w-fit' disabled>
-          <Sparkles className='mr-2 h-4 w-4' />
-          Upgrade to Pro
-        </Button>
-        <p className='text-muted-foreground text-xs'>
-          Pro plan coming soon. For now, generation works in dev mode — see the generator below.
-        </p>
-      </CardContent>
-    </Card>
-  )
+type StatusPage = { id: string; name: string; slug: string; last_generated: string | null; created_at: string }
+
+const PLAN_LIMITS: Record<string, number> = { free: 1, pro: 3, enterprise: 5 }
+
+function formatDate(iso: string | null) {
+  if (!iso) return null
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 }
 
-function StatusPagePreview() {
+// ── Add page dialog ───────────────────────────────────────────────────────────
+
+function AddPageDialog({ open: dialogOpen, onOpenChange, onCreate }: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onCreate: (name: string) => Promise<void>
+}) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      await onCreate(name.trim())
+      setName('')
+      onOpenChange(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div className='rounded-md bg-[#0f0f11] p-4 text-xs font-mono space-y-2'>
-      <div className='text-[#a1a1aa]'>My Workspace</div>
-      <div className='flex items-center gap-2'>
-        <span className='inline-block h-2.5 w-2.5 rounded-full bg-green-500' />
-        <span className='font-bold text-white text-sm'>All systems operational</span>
-      </div>
-      <div className='mt-3 space-y-1.5'>
-        {[
-          { name: 'api.example.com', type: 'HTTP', status: 'up' },
-          { name: 'db.example.com', type: 'PORT', status: 'up' },
-          { name: 'cdn.example.com', type: 'DNS', status: 'degraded' },
-        ].map((m) => (
-          <div key={m.name} className='flex items-center justify-between rounded bg-[#18181b] px-3 py-2'>
-            <div className='flex items-center gap-2'>
-              <span
-                className='inline-block h-2 w-2 rounded-full'
-                style={{
-                  background: m.status === 'up' ? '#22c55e' : m.status === 'down' ? '#ef4444' : '#eab308',
-                }}
-              />
-              <span className='text-zinc-200'>{m.name}</span>
-              <span className='text-zinc-500'>{m.type}</span>
-            </div>
-            <span
-              className='text-[10px] font-semibold uppercase'
-              style={{ color: m.status === 'up' ? '#22c55e' : m.status === 'degraded' ? '#eab308' : '#ef4444' }}
-            >
-              {m.status === 'up' ? 'Operational' : m.status === 'degraded' ? 'Degraded' : 'Down'}
-            </span>
+    <Dialog open={dialogOpen} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-sm'>
+        <div className='flex flex-col gap-4'>
+          <p className='text-sm font-semibold'>New status page</p>
+          <div>
+            <Label className='text-xs text-muted-foreground'>Name</Label>
+            <Input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              placeholder='Infrastructure, Backend Services...'
+              className='mt-1 h-8 text-sm'
+              autoFocus
+            />
           </div>
-        ))}
-      </div>
-    </div>
+          <Button size='sm' onClick={handleSave} disabled={saving || !name.trim()}>
+            Create
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-function StatusPageGenerator() {
+// ── Page card ─────────────────────────────────────────────────────────────────
+
+function PageCard({ page, onDelete }: { page: StatusPage; onDelete: () => void }) {
+  const qc = useQueryClient()
   const [generating, setGenerating] = useState(false)
   const [outputPath, setOutputPath] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function generate() {
     setGenerating(true)
-    setError(null)
     try {
-      const path = await db.generateStatusPage()
+      const path = await db.generateStatusPage(page.id)
       setOutputPath(path)
+      qc.invalidateQueries({ queryKey: ['status-pages'] })
+      toast.success('Status page generated')
     } catch (e) {
-      setError(String(e))
+      toast.error(String(e))
     } finally {
       setGenerating(false)
     }
   }
 
   async function copyPath() {
-    if (!outputPath) return
-    await navigator.clipboard.writeText(outputPath)
+    const p = outputPath
+    if (!p) return
+    await navigator.clipboard.writeText(p)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   async function openInBrowser() {
-    if (!outputPath) return
-    // Convert Windows backslashes to forward slashes for file:// URL
-    const fileUrl = outputPath.startsWith('/')
-      ? `file://${outputPath}`
-      : `file:///${outputPath.replace(/\\/g, '/')}`
+    const p = outputPath
+    if (!p) return
+    const fileUrl = p.startsWith('/') ? `file://${p}` : `file:///${p.replace(/\\/g, '/')}`
     await open(fileUrl)
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Generate Status Page</CardTitle>
-        <CardDescription>
-          Creates a static <code className='text-xs'>index.html</code> file from your current
-          monitor data. Host it anywhere.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className='flex flex-col gap-4'>
-        <Button onClick={generate} disabled={generating} className='w-fit'>
-          {generating ? (
-            <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-          ) : (
-            <RefreshCw className='mr-2 h-4 w-4' />
+    <div className='group relative flex flex-col gap-3 rounded-lg border border-border/50 bg-card px-4 py-3 transition-colors hover:border-border'>
+      <div className='absolute left-0 top-0 h-full w-[3px] bg-indigo-500 rounded-l-lg' />
+      <div className='flex items-start justify-between gap-3'>
+        <div className='min-w-0'>
+          <p className='text-sm font-medium'>{page.name}</p>
+          {page.last_generated && (
+            <p className='mt-0.5 text-xs text-muted-foreground'>
+              Last generated {formatDate(page.last_generated)}
+            </p>
           )}
-          {outputPath ? 'Regenerate' : 'Generate now'}
+        </div>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive'
+          onClick={onDelete}
+        >
+          <Trash2 className='h-3.5 w-3.5' />
         </Button>
+      </div>
 
-        {error && (
-          <p className='text-destructive text-sm'>{error}</p>
-        )}
+      <div className='flex items-center gap-2'>
+        <Button size='sm' className='h-7 gap-1.5 text-xs' onClick={generate} disabled={generating}>
+          {generating
+            ? <Loader2 className='h-3 w-3 animate-spin' />
+            : <RefreshCw className='h-3 w-3' />}
+          {outputPath ? 'Regenerate' : 'Generate'}
+        </Button>
+      </div>
 
-        {outputPath && (
-          <div className='flex flex-col gap-3'>
-            <Separator />
-            <div className='flex flex-col gap-1.5'>
-              <p className='text-sm font-medium'>Output file</p>
-              <div className='bg-muted flex items-center gap-2 rounded-md px-3 py-2'>
-                <code className='text-muted-foreground min-w-0 flex-1 truncate text-xs'>
-                  {outputPath}
-                </code>
-                <Button variant='ghost' size='icon' className='h-6 w-6 shrink-0' onClick={copyPath}>
-                  {copied ? (
-                    <Check className='h-3.5 w-3.5 text-green-500' />
-                  ) : (
-                    <Copy className='h-3.5 w-3.5' />
-                  )}
-                </Button>
-              </div>
-            </div>
-            <div className='flex gap-2'>
-              <Button variant='outline' size='sm' onClick={openInBrowser}>
-                <ExternalLink className='mr-2 h-4 w-4' />
-                Open in browser
+      {outputPath && (
+        <>
+          <Separator />
+          <div className='flex flex-col gap-2'>
+            <div className='bg-muted flex items-center gap-2 rounded-md px-3 py-1.5'>
+              <code className='text-muted-foreground min-w-0 flex-1 truncate text-[11px]'>
+                {outputPath}
+              </code>
+              <Button variant='ghost' size='icon' className='h-5 w-5 shrink-0' onClick={copyPath}>
+                {copied
+                  ? <Check className='h-3 w-3 text-green-500' />
+                  : <Copy className='h-3 w-3' />}
               </Button>
             </div>
-            <p className='text-muted-foreground text-xs'>
-              Tip: serve this file with any static host — Nginx, Caddy, GitHub Pages, Cloudflare Pages.
-            </p>
+            <Button variant='outline' size='sm' className='h-7 w-fit gap-1.5 text-xs' onClick={openInBrowser}>
+              <ExternalLink className='h-3 w-3' />
+              Open in browser
+            </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </>
+      )}
+    </div>
   )
 }
 
+// ── Main feature ──────────────────────────────────────────────────────────────
+
 export function StatusPageFeature() {
-  const { data: _plan } = useQuery({
-    queryKey: ['workspace-plan'],
-    queryFn: () => db.getWorkspacePlan(),
+  const plan = usePlanStore(s => s.plan)
+  const limit = PLAN_LIMITS[plan] ?? 1
+  const qc = useQueryClient()
+  const [addOpen, setAddOpen] = useState(false)
+
+  const { data: pages = [], isLoading } = useQuery({
+    queryKey: ['status-pages'],
+    queryFn: () => db.listStatusPages(),
   })
+
+  const createMutation = useMutation({
+    mutationFn: (name: string) => db.createStatusPage(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['status-pages'] }),
+    onError: (e) => toast.error(String(e)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => db.deleteStatusPage(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['status-pages'] }),
+  })
+
+  const atLimit = pages.length >= limit
 
   return (
     <>
       <Header fixed>
         <div className='flex items-center gap-2 me-auto'>
-          <Globe className='h-5 w-5' />
+          <Globe className='h-4 w-4 text-muted-foreground' />
           <span className='font-semibold'>Status Page</span>
-          <Badge variant='outline' className='text-muted-foreground text-xs'>Pro</Badge>
+          <Badge variant='outline' className='tabular-nums text-xs'>{pages.length} / {limit}</Badge>
         </div>
+        <ThemeSwitch />
+        <ProfileDropdown />
       </Header>
 
-      <Main className='flex flex-1 flex-col gap-6'>
-        <div>
-          <h2 className='text-2xl font-bold tracking-tight'>Status Page</h2>
-          <p className='text-muted-foreground text-sm'>
-            Publish a public status page for your services.
-          </p>
+      <Main className='flex flex-1 flex-col gap-4'>
+        <div className='flex items-center justify-between gap-3'>
+          <div>
+            <h2 className='text-lg font-semibold tracking-tight'>Status Pages</h2>
+            <p className='text-xs text-muted-foreground'>
+              Generate static HTML exports you can host anywhere — Nginx, GitHub Pages, Cloudflare.
+            </p>
+          </div>
+          <Button
+            size='sm'
+            onClick={() => setAddOpen(true)}
+            disabled={atLimit}
+            title={atLimit ? `${limit}-page limit on ${plan} plan` : undefined}
+          >
+            <Plus className='mr-1.5 h-3.5 w-3.5' />
+            New page
+          </Button>
         </div>
 
-        <ProGateCard />
-
-        {/* Generator available in dev regardless of plan */}
-        <StatusPageGenerator />
+        {isLoading ? (
+          <p className='text-xs text-muted-foreground'>Loading...</p>
+        ) : pages.length === 0 ? (
+          <div className='flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border'>
+            <Globe className='h-8 w-8 text-muted-foreground/40' />
+            <div className='text-center'>
+              <p className='text-sm font-medium'>No status pages yet</p>
+              <p className='text-xs text-muted-foreground'>Create your first page to get a shareable status export.</p>
+            </div>
+            <Button size='sm' onClick={() => setAddOpen(true)}>
+              <Plus className='mr-1.5 h-3.5 w-3.5' />New page
+            </Button>
+          </div>
+        ) : (
+          <div className='flex flex-col gap-2'>
+            {pages.map(p => (
+              <PageCard
+                key={p.id}
+                page={p}
+                onDelete={() => deleteMutation.mutate(p.id)}
+              />
+            ))}
+            {atLimit && (
+              <p className='text-xs text-muted-foreground'>
+                {limit}-page limit reached on {plan} plan.
+                {plan !== 'enterprise' && ' Upgrade for more.'}
+              </p>
+            )}
+          </div>
+        )}
       </Main>
+
+      <AddPageDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onCreate={name => createMutation.mutateAsync(name)}
+      />
     </>
   )
 }

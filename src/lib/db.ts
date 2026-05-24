@@ -25,8 +25,19 @@ export interface Monitor {
   timeout_seconds: number
   enabled: number
   config: string | null
+  degraded_threshold_ms: number | null
   created_at: string
   updated_at: string
+}
+
+export interface MaintenanceWindow {
+  id: string
+  monitor_id: string | null
+  name: string
+  starts_at: string
+  ends_at: string
+  repeat: 'daily' | 'weekly' | 'monthly' | null
+  created_at: string
 }
 
 export interface MonitorWithStatus extends Monitor {
@@ -102,6 +113,7 @@ export interface CreateMonitorInput {
   interval_seconds?: number
   timeout_seconds?: number
   config?: string
+  degraded_threshold_ms?: number | null
 }
 
 export interface UpdateMonitorInput {
@@ -112,6 +124,15 @@ export interface UpdateMonitorInput {
   timeout_seconds?: number
   enabled?: number
   config?: string
+  degraded_threshold_ms?: number | null
+}
+
+export interface CreateMaintenanceWindowInput {
+  monitor_id?: string | null
+  name: string
+  starts_at: string
+  ends_at: string
+  repeat?: 'daily' | 'weekly' | 'monthly' | null
 }
 
 function nowIso(): string {
@@ -150,8 +171,8 @@ export const db = {
     const id = uuid()
     const now = nowIso()
     await d.execute(
-      `INSERT INTO monitors (id, name, type, target, interval_seconds, timeout_seconds, enabled, config, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $8)`,
+      `INSERT INTO monitors (id, name, type, target, interval_seconds, timeout_seconds, enabled, config, degraded_threshold_ms, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, $9)`,
       [
         id,
         input.name,
@@ -160,6 +181,7 @@ export const db = {
         input.interval_seconds ?? 300,
         input.timeout_seconds ?? 10,
         input.config ?? null,
+        input.degraded_threshold_ms ?? null,
         now,
       ]
     )
@@ -179,6 +201,7 @@ export const db = {
     if (input.timeout_seconds !== undefined) { fields.push(`timeout_seconds = $${i++}`); values.push(input.timeout_seconds) }
     if (input.enabled !== undefined) { fields.push(`enabled = $${i++}`); values.push(input.enabled) }
     if (input.config !== undefined) { fields.push(`config = $${i++}`); values.push(input.config) }
+    if (input.degraded_threshold_ms !== undefined) { fields.push(`degraded_threshold_ms = $${i++}`); values.push(input.degraded_threshold_ms) }
 
     if (fields.length === 0) return
     fields.push(`updated_at = $${i++}`)
@@ -194,6 +217,48 @@ export const db = {
   async deleteMonitor(id: string): Promise<void> {
     const d = await getDb()
     await d.execute('DELETE FROM monitors WHERE id = $1', [id])
+  },
+
+  // ── Maintenance windows ──────────────────────────────────────────────────────
+
+  async listMaintenanceWindows(): Promise<MaintenanceWindow[]> {
+    const d = await getDb()
+    return d.select<MaintenanceWindow[]>(
+      `SELECT * FROM maintenance_windows ORDER BY starts_at ASC`
+    )
+  },
+
+  async createMaintenanceWindow(input: CreateMaintenanceWindowInput): Promise<MaintenanceWindow> {
+    const d = await getDb()
+    const id = uuid()
+    const now = nowIso()
+    await d.execute(
+      `INSERT INTO maintenance_windows (id, monitor_id, name, starts_at, ends_at, repeat, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, input.monitor_id ?? null, input.name, input.starts_at, input.ends_at, input.repeat ?? null, now]
+    )
+    const rows = await d.select<MaintenanceWindow[]>('SELECT * FROM maintenance_windows WHERE id = $1', [id])
+    return rows[0]
+  },
+
+  async updateMaintenanceWindow(input: Partial<CreateMaintenanceWindowInput> & { id: string }): Promise<void> {
+    const d = await getDb()
+    const fields: string[] = []
+    const values: unknown[] = []
+    let i = 1
+    if (input.name !== undefined) { fields.push(`name = $${i++}`); values.push(input.name) }
+    if (input.monitor_id !== undefined) { fields.push(`monitor_id = $${i++}`); values.push(input.monitor_id) }
+    if (input.starts_at !== undefined) { fields.push(`starts_at = $${i++}`); values.push(input.starts_at) }
+    if (input.ends_at !== undefined) { fields.push(`ends_at = $${i++}`); values.push(input.ends_at) }
+    if (input.repeat !== undefined) { fields.push(`repeat = $${i++}`); values.push(input.repeat) }
+    if (fields.length === 0) return
+    values.push(input.id)
+    await d.execute(`UPDATE maintenance_windows SET ${fields.join(', ')} WHERE id = $${i}`, values)
+  },
+
+  async deleteMaintenanceWindow(id: string): Promise<void> {
+    const d = await getDb()
+    await d.execute('DELETE FROM maintenance_windows WHERE id = $1', [id])
   },
 
   async listCheckResults(monitorId: string, limit = 100): Promise<CheckResult[]> {
@@ -258,8 +323,33 @@ export const db = {
     return invoke('check_monitor_now', { monitorId })
   },
 
-  async generateStatusPage(): Promise<string> {
-    return invoke('generate_status_page')
+  async checkWsMonitorNow(
+    monitorId: string,
+    monitorType: string,
+    target: string,
+    timeoutSeconds: number,
+    config: string | null | undefined,
+    supabaseUrl: string,
+    anonKey: string,
+    accessToken: string,
+  ): Promise<CheckSummary> {
+    return invoke('check_ws_monitor_now', { monitorId, monitorType, target, timeoutSeconds, config: config ?? null, supabaseUrl, anonKey, accessToken })
+  },
+
+  async listStatusPages(): Promise<{ id: string; name: string; slug: string; last_generated: string | null; created_at: string }[]> {
+    return invoke('list_status_pages')
+  },
+
+  async createStatusPage(name: string): Promise<{ id: string; name: string; slug: string; last_generated: string | null; created_at: string }> {
+    return invoke('create_status_page', { name })
+  },
+
+  async deleteStatusPage(id: string): Promise<void> {
+    return invoke('delete_status_page', { id })
+  },
+
+  async generateStatusPage(pageId: string): Promise<string> {
+    return invoke('generate_status_page', { pageId })
   },
 
   async getWorkspacePlan(): Promise<'free' | 'pro' | 'enterprise'> {

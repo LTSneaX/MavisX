@@ -116,6 +116,60 @@ pub async fn check_monitor_now(
 }
 
 #[tauri::command]
+pub async fn check_ws_monitor_now(
+    monitor_id: String,
+    monitor_type: String,
+    target: String,
+    timeout_seconds: i64,
+    config: Option<String>,
+    supabase_url: String,
+    anon_key: String,
+    access_token: String,
+) -> Result<CheckSummary, String> {
+
+    let timeout = std::time::Duration::from_secs(timeout_seconds.max(1) as u64);
+    let outcome = engine::dispatch_check(&monitor_type, &target, timeout, config.as_deref()).await;
+
+    #[derive(serde::Serialize)]
+    struct RpcArgs {
+        p_id: String,
+        p_status: String,
+        p_last_checked_at: String,
+        p_response_ms: Option<i64>,
+        p_detail: Option<String>,
+    }
+
+    let args = RpcArgs {
+        p_id: monitor_id,
+        p_status: outcome.status.to_string(),
+        p_last_checked_at: chrono::Utc::now().to_rfc3339(),
+        p_response_ms: outcome.response_ms,
+        p_detail: outcome.detail.clone(),
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    client
+        .post(format!("{}/rest/v1/rpc/record_workspace_monitor_result", supabase_url))
+        .header("apikey", &anon_key)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Content-Type", "application/json")
+        .json(&args)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(CheckSummary {
+        status: outcome.status.to_owned(),
+        response_ms: outcome.response_ms,
+        detail: outcome.detail,
+    })
+}
+
+#[tauri::command]
 pub async fn record_heartbeat(app: tauri::AppHandle, monitor_id: String) -> Result<(), String> {
     let pool = engine::connect_db(&app).await?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -145,6 +199,23 @@ pub async fn record_heartbeat(app: tauri::AppHandle, monitor_id: String) -> Resu
 }
 
 #[tauri::command]
+pub async fn set_supabase_session(
+    app: tauri::AppHandle,
+    url: String,
+    anon_key: String,
+    access_token: String,
+) -> Result<(), String> {
+    let state = app.state::<crate::SupabaseState>();
+    let mut lock = state.0.lock().unwrap();
+    if access_token.is_empty() {
+        *lock = None;
+    } else {
+        *lock = Some(crate::SupabaseSession { url, anon_key, access_token });
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn set_workspace_plan(app: tauri::AppHandle, plan: String) -> Result<(), String> {
     let pool = engine::connect_db(&app).await?;
     sqlx::query("UPDATE workspace SET plan = ? WHERE id = 'local'")
@@ -163,9 +234,111 @@ pub async fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+// ── Status pages ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct StatusPageRow {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub last_generated: Option<String>,
+    pub created_at: String,
+}
+
 #[tauri::command]
-pub async fn generate_status_page(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn list_status_pages(app: tauri::AppHandle) -> Result<Vec<StatusPageRow>, String> {
     let pool = engine::connect_db(&app).await?;
+    sqlx::query_as::<_, StatusPageRow>(
+        "SELECT id, name, slug, last_generated, created_at FROM status_pages ORDER BY created_at ASC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_status_page(app: tauri::AppHandle, name: String) -> Result<StatusPageRow, String> {
+    let pool = engine::connect_db(&app).await?;
+
+    let plan: String = sqlx::query_scalar("SELECT plan FROM workspace WHERE id = 'local'")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or_else(|_| "free".to_string());
+
+    let limit: i64 = match plan.as_str() {
+        "enterprise" => 5,
+        "pro" => 3,
+        _ => 1,
+    };
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM status_pages")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(0);
+
+    if count >= limit {
+        return Err(format!("Plan limit reached ({limit} pages on {plan} plan)"));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let slug_base: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let slug = format!("{}-{}", slug_base, &id[..8]);
+    let now = chrono::Utc::now().to_rfc3339();
+
+    sqlx::query("INSERT INTO status_pages (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&name)
+        .bind(&slug)
+        .bind(&now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(StatusPageRow { id, name, slug, last_generated: None, created_at: now })
+}
+
+#[tauri::command]
+pub async fn delete_status_page(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = engine::connect_db(&app).await?;
+
+    let slug: Option<String> = sqlx::query_scalar("SELECT slug FROM status_pages WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM status_pages WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(s) = slug {
+        let _ = app.path().app_data_dir().map(|dir| {
+            let _ = std::fs::remove_file(dir.join("status-page").join(format!("{s}.html")));
+        });
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn generate_status_page(app: tauri::AppHandle, page_id: String) -> Result<String, String> {
+    let pool = engine::connect_db(&app).await?;
+
+    let page = sqlx::query_as::<_, StatusPageRow>(
+        "SELECT id, name, slug, last_generated, created_at FROM status_pages WHERE id = ?",
+    )
+    .bind(&page_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|_| "Status page not found".to_string())?;
 
     let workspace_name: String = sqlx::query_scalar(
         "SELECT name FROM workspace WHERE id = 'local'",
@@ -214,7 +387,7 @@ pub async fn generate_status_page(app: tauri::AppHandle) -> Result<String, Strin
             "degraded" => ("#eab308", "Degraded"),
             _ => ("#6b7280", "Checking"),
         };
-        let checked = m.last_checked.as_deref().unwrap_or("—");
+        let _checked = m.last_checked.as_deref().unwrap_or("—");
         rows.push_str(&format!(
             r#"<div class="row">
   <div class="left">
@@ -241,7 +414,7 @@ pub async fn generate_status_page(app: tauri::AppHandle) -> Result<String, Strin
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>{name} — Status</title>
+<title>{page_name} — Status | {ws_name}</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f11;color:#e4e4e7;min-height:100vh;padding:40px 20px}}
@@ -249,6 +422,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 .header{{margin-bottom:40px}}
 .site-name{{font-size:1.1rem;font-weight:600;color:#a1a1aa;margin-bottom:16px}}
 .overall{{display:flex;align-items:center;gap:12px;padding:20px 24px;border-radius:12px;background:#18181b;border:1px solid #27272a;margin-bottom:8px}}
+.page-name{{font-size:1.6rem;font-weight:700;color:#e4e4e7;margin-bottom:16px}}
 .overall-dot{{width:14px;height:14px;border-radius:50%;flex-shrink:0;background:{overall_color}}}
 .overall-text{{font-size:1.25rem;font-weight:700}}
 .generated{{font-size:0.75rem;color:#52525b;margin-bottom:32px}}
@@ -265,7 +439,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 <body>
 <div class="wrap">
   <div class="header">
-    <div class="site-name">{name}</div>
+    <div class="site-name">{ws_name}</div>
+    <div class="page-name">{page_name}</div>
     <div class="overall">
       <div class="overall-dot"></div>
       <div class="overall-text">{overall_text}</div>
@@ -279,7 +454,8 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
 </div>
 </body>
 </html>"#,
-        name = html_escape(&workspace_name),
+        ws_name = html_escape(&workspace_name),
+        page_name = html_escape(&page.name),
         overall_color = overall_color,
         overall_text = overall_text,
         generated_at = generated_at,
@@ -292,8 +468,15 @@ body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgro
         .map_err(|e| e.to_string())?
         .join("status-page");
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
-    let out_path = out_dir.join("index.html");
+    let out_path = out_dir.join(format!("{}.html", page.slug));
     std::fs::write(&out_path, html).map_err(|e| e.to_string())?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let _ = sqlx::query("UPDATE status_pages SET last_generated = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&page_id)
+        .execute(&pool)
+        .await;
 
     Ok(out_path.to_string_lossy().to_string())
 }
@@ -323,6 +506,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 3,
             description: "vaults",
             sql: include_str!("../migrations/0003_vaults.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "status_pages",
+            sql: include_str!("../migrations/0004_status_pages.sql"),
             kind: MigrationKind::Up,
         },
     ]

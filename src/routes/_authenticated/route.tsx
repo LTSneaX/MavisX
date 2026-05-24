@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, isRedirect } from '@tanstack/react-router'
 import { AuthenticatedLayout } from '@/components/layout/authenticated-layout'
 import { invoke } from '@tauri-apps/api/core'
-import { supabase } from '@/lib/supabase'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth-store'
 import { usePlanStore, resolvePlan } from '@/stores/plan-store'
 
@@ -21,6 +21,11 @@ export const Route = createFileRoute('/_authenticated')({
       console.log('[auth] resolved plan:', plan)
       usePlanStore.getState().setPlan(plan)
       invoke('set_workspace_plan', { plan }).catch(() => {})
+      invoke('set_supabase_session', {
+        url: SUPABASE_URL,
+        anon_key: SUPABASE_ANON_KEY,
+        access_token: data.session.access_token,
+      }).catch(() => {})
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -31,6 +36,15 @@ export const Route = createFileRoute('/_authenticated')({
 
       // Activate any pending invites matching the user's email
       await supabase.rpc('activate_my_invites')
+
+      // Ensure email is always populated for this user's workspace_members rows
+      if (data.session.user.email) {
+        await supabase
+          .from('workspace_members')
+          .update({ email: data.session.user.email })
+          .eq('user_id', data.session.user.id)
+          .is('email', null)
+      }
 
       // Load workspaces for all users (free users can be members of enterprise workspaces)
       const { data: memberRows } = await supabase

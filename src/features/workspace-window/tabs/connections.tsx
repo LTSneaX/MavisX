@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Terminal, Globe, Server, Pencil } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import { invoke } from '@tauri-apps/api/core'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
+import {
+  Plus, Trash2, Terminal, Globe, Server, Pencil,
+  FolderOpen, Container, Monitor, Zap, Loader2,
+  CheckCircle, XCircle, Circle,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -9,22 +16,84 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 
-interface Props { workspaceId: string; isAdmin: boolean }
+interface Props { workspaceId: string; isAdmin: boolean; closeOverlay: () => void }
 
 const CONN_TYPES = ['ssh', 'sftp', 'ftp', 'rdp', 'vnc', 'telnet', 'docker', 'web'] as const
 
-function ConnIcon({ type }: { type: string }) {
-  if (type === 'ssh' || type === 'sftp' || type === 'telnet') return <Terminal className='h-4 w-4 text-muted-foreground shrink-0' />
-  if (type === 'web') return <Globe className='h-4 w-4 text-muted-foreground shrink-0' />
-  return <Server className='h-4 w-4 text-muted-foreground shrink-0' />
+type ConnType = typeof CONN_TYPES[number]
+
+const TYPE_META: Record<ConnType, { label: string; icon: React.ElementType; color: string }> = {
+  ssh:    { label: 'SSH',    icon: Terminal,   color: 'text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10' },
+  sftp:   { label: 'SFTP',  icon: FolderOpen, color: 'text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/10'         },
+  ftp:    { label: 'FTP',   icon: FolderOpen, color: 'text-blue-400 border-blue-500/30 hover:bg-blue-500/10'         },
+  rdp:    { label: 'RDP',   icon: Monitor,    color: 'text-violet-400 border-violet-500/30 hover:bg-violet-500/10'   },
+  vnc:    { label: 'VNC',   icon: Monitor,    color: 'text-purple-400 border-purple-500/30 hover:bg-purple-500/10'   },
+  telnet: { label: 'Telnet',icon: Terminal,   color: 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10'     },
+  docker: { label: 'Docker',icon: Container,  color: 'text-sky-400 border-sky-500/30 hover:bg-sky-500/10'           },
+  web:    { label: 'Web',   icon: Globe,      color: 'text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10'   },
 }
 
-export function ConnectionsTab({ workspaceId, isAdmin }: Props) {
+function ConnIcon({ type }: { type: string }) {
+  const meta = TYPE_META[type as ConnType]
+  if (!meta) return <Server className='h-4 w-4 text-muted-foreground shrink-0' />
+  const Icon = meta.icon
+  return <Icon className='h-4 w-4 text-muted-foreground shrink-0' />
+}
+
+const DEFAULT_PORT: Record<string, number> = {
+  ssh: 22, sftp: 22, ftp: 21, rdp: 3389, vnc: 5900, telnet: 23, docker: 2375,
+}
+
+interface WsConnection {
+  id: string; name: string; type: string; host: string; port: number;
+  username: string; group_name: string; vault_item_id: string | null
+}
+
+interface VaultItem { id: string; name: string; item_type: string }
+
+type TestStatus = 'up' | 'down'
+interface TestResult { status: TestStatus; response_ms: number | null }
+
+function HealthDot({ result }: { result: TestResult | undefined }) {
+  if (!result) return <Circle className='h-3 w-3 text-muted-foreground/30 shrink-0' />
+  if (result.status === 'up') return <CheckCircle className='h-3.5 w-3.5 text-emerald-500 shrink-0' />
+  return <XCircle className='h-3.5 w-3.5 text-red-500 shrink-0' />
+}
+
+export function ConnectionsTab({ workspaceId, isAdmin, closeOverlay }: Props) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [addOpen, setAddOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<null | {
-    id: string; name: string; type: string; host: string; port: number | null; username: string | null; group_name: string | null
-  }>(null)
+  const [editTarget, setEditTarget] = useState<null | WsConnection>(null)
+  const [testing, setTesting] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
+
+  async function handleTest(c: WsConnection) {
+    if (testing) return
+    setTesting(c.id)
+    try {
+      const port = c.port ?? DEFAULT_PORT[c.type] ?? 80
+      const isWeb = c.type === 'web'
+      const monitorType = isWeb ? 'http' : 'tcp'
+      const target = isWeb
+        ? (c.host?.startsWith('http') ? c.host : `https://${c.host}`)
+        : `${c.host}:${port}`
+
+      const result = await invoke<{ status: string; response_ms: number | null; detail: string | null }>(
+        'test_monitor', { monitorType, target, timeoutSeconds: 10, config: null }
+      )
+      const status: TestStatus = result.status === 'up' ? 'up' : 'down'
+      setTestResults((prev) => ({ ...prev, [c.id]: { status, response_ms: result.response_ms } }))
+      toast[status === 'up' ? 'success' : 'error'](
+        `${c.name} — ${status.toUpperCase()}${result.response_ms != null ? ` (${result.response_ms}ms)` : ''}${result.detail ? ` · ${result.detail}` : ''}`
+      )
+    } catch (err) {
+      setTestResults((prev) => ({ ...prev, [c.id]: { status: 'down', response_ms: null } }))
+      toast.error(`Test failed: ${String(err)}`)
+    } finally {
+      setTesting(null)
+    }
+  }
 
   const { data: connections = [], isLoading } = useQuery({
     queryKey: ['ws-connections', workspaceId],
@@ -34,8 +103,15 @@ export function ConnectionsTab({ workspaceId, isAdmin }: Props) {
         .select('*')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: true })
-      return data ?? []
+      return (data ?? []) as WsConnection[]
     },
+  })
+
+  // Vault items for the credential picker (only loaded if vault is unlocked)
+  const { data: vaultItems = [] } = useQuery<VaultItem[]>({
+    queryKey: ['ws-vault-items', workspaceId],
+    queryFn: () => invoke('ws_vault_list', { workspace_id: workspaceId }),
+    retry: false,
   })
 
   const deleteConn = useMutation({
@@ -46,6 +122,71 @@ export function ConnectionsTab({ workspaceId, isAdmin }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ws-connections', workspaceId] }),
     onError: () => toast.error('Failed to delete connection'),
   })
+
+  function handleConnect(c: WsConnection) {
+    closeOverlay()
+
+    if (c.type === 'ssh') {
+      navigate({
+        to: '/ssh',
+        search: {
+          host: c.host,
+          port: c.port ?? 22,
+          username: c.username ?? '',
+          ...(c.vault_item_id ? { ws_workspace_id: workspaceId, ws_vault_item_id: c.vault_item_id } : {}),
+        } as Parameters<typeof navigate>[0]['search'],
+      })
+      return
+    }
+
+    if (c.type === 'sftp') {
+      navigate({
+        to: '/files',
+        search: {
+          host: c.host,
+          port: String(c.port ?? 22),
+          username: c.username ?? '',
+          ...(c.vault_item_id ? { ws_workspace_id: workspaceId, ws_vault_item_id: c.vault_item_id } : {}),
+        } as Parameters<typeof navigate>[0]['search'],
+      })
+      return
+    }
+
+    if (c.type === 'ftp') {
+      navigate({ to: '/files', search: { host: c.host, port: String(c.port ?? 21), username: c.username ?? '' } as Parameters<typeof navigate>[0]['search'] })
+      return
+    }
+
+    if (c.type === 'web') {
+      const url = c.host?.startsWith('http') ? c.host : `https://${c.host}`
+      navigate({ to: '/web-viewer', search: { url, name: c.name } as Parameters<typeof navigate>[0]['search'] })
+      return
+    }
+
+    if (c.type === 'docker') {
+      navigate({ to: '/docker' })
+      return
+    }
+
+    if (c.type === 'rdp') {
+      const host = c.host
+      const port = c.port ?? 3389
+      shellOpen(`rdp:full%20address=s:${host}:${port}`)
+      return
+    }
+
+    if (c.type === 'vnc') {
+      shellOpen(`vnc://${c.host}:${c.port ?? 5900}`)
+      return
+    }
+
+    if (c.type === 'telnet') {
+      shellOpen(`telnet://${c.host}:${c.port ?? 23}`)
+      return
+    }
+
+    toast.info(`${TYPE_META[c.type as ConnType]?.label ?? c.type} — coming soon`)
+  }
 
   return (
     <div className='flex flex-col gap-4 p-6'>
@@ -74,60 +215,129 @@ export function ConnectionsTab({ workspaceId, isAdmin }: Props) {
         </div>
       ) : (
         <div className='rounded-lg border border-border/50 bg-card divide-y divide-border/30'>
-          {connections.map((c: {
-            id: string; name: string; type: string; host: string; port: number; username: string; group_name: string
-          }) => (
-            <div key={c.id} className='flex items-center gap-3 px-4 py-3'>
-              <ConnIcon type={c.type} />
-              <div className='flex-1 min-w-0'>
-                <div className='flex items-center gap-2'>
-                  <p className='text-sm font-medium truncate'>{c.name}</p>
-                  <Badge variant='outline' className='text-[10px] shrink-0 uppercase'>{c.type}</Badge>
+          {connections.map((c) => {
+            const meta = TYPE_META[c.type as ConnType]
+            const Icon = meta?.icon ?? Server
+            const result = testResults[c.id]
+            return (
+              <div key={c.id} className='flex items-center gap-3 px-4 py-3'>
+                <HealthDot result={result} />
+                <Icon className='h-4 w-4 text-muted-foreground shrink-0' />
+                <div className='flex-1 min-w-0'>
+                  <div className='flex items-center gap-2'>
+                    <p className='text-sm font-medium truncate'>{c.name}</p>
+                    <Badge variant='outline' className='text-[10px] shrink-0 uppercase'>{c.type}</Badge>
+                    {c.vault_item_id && (
+                      <Badge variant='outline' className='text-[10px] shrink-0 text-violet-400 border-violet-500/30'>vault</Badge>
+                    )}
+                  </div>
+                  <p className='text-xs text-muted-foreground truncate'>
+                    {c.username ? `${c.username}@` : ''}{c.host}{c.port ? `:${c.port}` : ''}
+                    {result?.response_ms != null && (
+                      <span className='ml-2 tabular-nums text-muted-foreground/60'>{result.response_ms}ms</span>
+                    )}
+                  </p>
                 </div>
-                <p className='text-xs text-muted-foreground truncate'>
-                  {c.username ? `${c.username}@` : ''}{c.host}{c.port ? `:${c.port}` : ''}
-                </p>
-              </div>
-              {c.group_name && (
-                <span className='text-xs text-muted-foreground shrink-0'>{c.group_name}</span>
-              )}
-              {isAdmin && (
+                {c.group_name && (
+                  <span className='text-xs text-muted-foreground shrink-0'>{c.group_name}</span>
+                )}
                 <div className='flex items-center gap-1 shrink-0'>
+                  {/* Test button */}
                   <Button
-                    size='sm' variant='ghost' className='h-7 w-7 p-0 text-muted-foreground hover:text-foreground'
-                    onClick={() => setEditTarget({ id: c.id, name: c.name, type: c.type, host: c.host, port: c.port, username: c.username, group_name: c.group_name })}
+                    size='sm' variant='ghost'
+                    className='h-7 w-7 p-0 text-muted-foreground hover:text-amber-400'
+                    disabled={testing === c.id}
+                    onClick={() => handleTest(c)}
+                    title='Test reachability'
                   >
-                    <Pencil className='h-3.5 w-3.5' />
+                    {testing === c.id
+                      ? <Loader2 className='h-3.5 w-3.5 animate-spin' />
+                      : <Zap className='h-3.5 w-3.5' />}
                   </Button>
-                  <Button
-                    size='sm' variant='ghost' className='h-7 w-7 p-0 text-muted-foreground hover:text-destructive'
-                    onClick={() => deleteConn.mutate(c.id)}
-                  >
-                    <Trash2 className='h-3.5 w-3.5' />
-                  </Button>
+                  {/* Connect button */}
+                  {meta && (
+                    <Button
+                      variant='outline' size='sm'
+                      className={`h-7 gap-1.5 border px-2.5 text-xs font-medium transition-colors ${meta.color}`}
+                      onClick={() => handleConnect(c)}
+                    >
+                      <meta.icon className='h-3 w-3' />
+                      {meta.label}
+                    </Button>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <Button
+                        size='sm' variant='ghost' className='h-7 w-7 p-0 text-muted-foreground hover:text-foreground'
+                        onClick={() => setEditTarget(c)}
+                      >
+                        <Pencil className='h-3.5 w-3.5' />
+                      </Button>
+                      <Button
+                        size='sm' variant='ghost' className='h-7 w-7 p-0 text-muted-foreground hover:text-destructive'
+                        onClick={() => deleteConn.mutate(c.id)}
+                      >
+                        <Trash2 className='h-3.5 w-3.5' />
+                      </Button>
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       )}
 
       {isAdmin && (
-        <AddConnectionDialog open={addOpen} workspaceId={workspaceId} onClose={() => setAddOpen(false)} />
+        <AddConnectionDialog
+          open={addOpen}
+          workspaceId={workspaceId}
+          vaultItems={vaultItems}
+          onClose={() => setAddOpen(false)}
+        />
       )}
       {isAdmin && editTarget && (
-        <EditConnectionDialog conn={editTarget} workspaceId={workspaceId} onClose={() => setEditTarget(null)} />
+        <EditConnectionDialog
+          conn={editTarget}
+          workspaceId={workspaceId}
+          vaultItems={vaultItems}
+          onClose={() => setEditTarget(null)}
+        />
       )}
     </div>
   )
 }
 
+// ─── Shared vault picker ──────────────────────────────────────────────────────
+
+function VaultPicker({
+  vaultItems, value, onChange,
+}: { vaultItems: VaultItem[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className='flex flex-col gap-1.5'>
+      <Label>Vault credential <span className='text-muted-foreground font-normal'>(optional)</span></Label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className='rounded-md border border-input bg-background px-3 py-2 text-sm'
+      >
+        <option value=''>— None (enter password at connect time) —</option>
+        {vaultItems.map((item) => (
+          <option key={item.id} value={item.id}>{item.name} ({item.item_type})</option>
+        ))}
+      </select>
+      {vaultItems.length === 0 && (
+        <p className='text-[11px] text-muted-foreground'>Unlock the Vault tab first to see available credentials.</p>
+      )}
+    </div>
+  )
+}
+
+// ─── Edit dialog ──────────────────────────────────────────────────────────────
+
 function EditConnectionDialog({
-  conn, workspaceId, onClose,
-}: {
-  conn: { id: string; name: string; type: string; host: string; port: number | null; username: string | null; group_name: string | null }
-  workspaceId: string; onClose: () => void
-}) {
+  conn, workspaceId, vaultItems, onClose,
+}: { conn: WsConnection; workspaceId: string; vaultItems: VaultItem[]; onClose: () => void }) {
   const qc = useQueryClient()
   const [name, setName] = useState(conn.name)
   const [type, setType] = useState(conn.type)
@@ -135,6 +345,7 @@ function EditConnectionDialog({
   const [port, setPort] = useState(conn.port?.toString() ?? '')
   const [username, setUsername] = useState(conn.username ?? '')
   const [group, setGroup] = useState(conn.group_name ?? '')
+  const [vaultItemId, setVaultItemId] = useState(conn.vault_item_id ?? '')
   const [saving, setSaving] = useState(false)
 
   async function handleSave(e: React.FormEvent) {
@@ -147,6 +358,7 @@ function EditConnectionDialog({
         port: port ? Number(port) : null,
         username: username.trim() || null,
         group_name: group.trim() || null,
+        vault_item_id: vaultItemId || null,
       }).eq('id', conn.id)
       if (error) throw error
       qc.invalidateQueries({ queryKey: ['ws-connections', workspaceId] })
@@ -197,6 +409,7 @@ function EditConnectionDialog({
               <Input value={group} onChange={(e) => setGroup(e.target.value)} />
             </div>
           </div>
+          <VaultPicker vaultItems={vaultItems} value={vaultItemId} onChange={setVaultItemId} />
           <DialogFooter>
             <Button type='button' variant='outline' size='sm' onClick={onClose}>Cancel</Button>
             <Button type='submit' size='sm' disabled={saving || !name.trim() || !host.trim()}>Save</Button>
@@ -207,7 +420,11 @@ function EditConnectionDialog({
   )
 }
 
-function AddConnectionDialog({ open, workspaceId, onClose }: { open: boolean; workspaceId: string; onClose: () => void }) {
+// ─── Add dialog ───────────────────────────────────────────────────────────────
+
+function AddConnectionDialog({
+  open, workspaceId, vaultItems, onClose,
+}: { open: boolean; workspaceId: string; vaultItems: VaultItem[]; onClose: () => void }) {
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [type, setType] = useState<string>('ssh')
@@ -215,6 +432,7 @@ function AddConnectionDialog({ open, workspaceId, onClose }: { open: boolean; wo
   const [port, setPort] = useState('')
   const [username, setUsername] = useState('')
   const [group, setGroup] = useState('')
+  const [vaultItemId, setVaultItemId] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function handleSave(e: React.FormEvent) {
@@ -230,11 +448,12 @@ function AddConnectionDialog({ open, workspaceId, onClose }: { open: boolean; wo
         port: port ? Number(port) : null,
         username: username.trim() || null,
         group_name: group.trim() || null,
+        vault_item_id: vaultItemId || null,
       })
       if (error) throw error
       qc.invalidateQueries({ queryKey: ['ws-connections', workspaceId] })
       toast.success('Connection saved')
-      setName(''); setHost(''); setPort(''); setUsername(''); setGroup(''); setType('ssh')
+      setName(''); setHost(''); setPort(''); setUsername(''); setGroup(''); setType('ssh'); setVaultItemId('')
       onClose()
     } catch {
       toast.error('Failed to save connection')
@@ -255,11 +474,8 @@ function AddConnectionDialog({ open, workspaceId, onClose }: { open: boolean; wo
             </div>
             <div className='flex flex-col gap-1.5 w-28'>
               <Label>Type</Label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                className='rounded-md border border-input bg-background px-3 py-2 text-sm'
-              >
+              <select value={type} onChange={(e) => setType(e.target.value)}
+                className='rounded-md border border-input bg-background px-3 py-2 text-sm'>
                 {CONN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
               </select>
             </div>
@@ -284,9 +500,10 @@ function AddConnectionDialog({ open, workspaceId, onClose }: { open: boolean; wo
               <Input value={group} onChange={(e) => setGroup(e.target.value)} placeholder='Production' />
             </div>
           </div>
+          <VaultPicker vaultItems={vaultItems} value={vaultItemId} onChange={setVaultItemId} />
           <DialogFooter>
             <Button type='button' variant='outline' size='sm' onClick={onClose}>Cancel</Button>
-            <Button type='submit' size='sm' disabled={saving || !name.trim() || !host.trim()}>Save</Button>
+            <Button type='submit' size='sm' disabled={saving || !name.trim() || !host.trim()}>Add</Button>
           </DialogFooter>
         </form>
       </DialogContent>

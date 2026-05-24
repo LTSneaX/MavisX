@@ -83,6 +83,7 @@ const schema = z.object({
   interval_seconds: z.coerce.number().int().min(30).max(86400)
     .refine((v) => isPlanPro() || v >= 150, { message: 'Free plan minimum is 150 seconds (2.5 min). Upgrade to Pro for 30s intervals.' }),
   timeout_seconds: z.coerce.number().int().min(1).max(60),
+  degraded_threshold_ms: z.coerce.number().int().min(1).optional().or(z.literal('').transform(() => undefined)),
   // HTTP-specific
   http_method: z.enum(['GET', 'HEAD', 'POST']).optional(),
   http_expected_status: z.coerce.number().int().min(100).max(599).optional(),
@@ -180,7 +181,7 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentRow?: MonitorWithStatus | null
-  onSubmit: (values: { name: string; type: string; target: string; interval_seconds: number; timeout_seconds: number; config: string | null }, id?: string) => Promise<void>
+  onSubmit: (values: { name: string; type: string; target: string; interval_seconds: number; timeout_seconds: number; config: string | null; degraded_threshold_ms?: number | null }, id?: string) => Promise<void>
 }
 
 export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }: Props) {
@@ -216,6 +217,7 @@ export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }
         target: currentRow.target,
         interval_seconds: currentRow.interval_seconds,
         timeout_seconds: currentRow.timeout_seconds,
+        degraded_threshold_ms: currentRow.degraded_threshold_ms ?? undefined,
         http_method: 'GET',
         http_follow_redirects: true,
         dns_record_type: 'A',
@@ -266,6 +268,7 @@ export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }
           interval_seconds: values.interval_seconds,
           timeout_seconds: values.timeout_seconds,
           config: buildConfig(values),
+          degraded_threshold_ms: values.degraded_threshold_ms ?? null,
         },
         currentRow?.id,
       )
@@ -473,6 +476,22 @@ export function MonitorMutateDrawer({ open, onOpenChange, currentRow, onSubmit }
               <Input id='m-timeout' type='number' min={1} max={60} {...form.register('timeout_seconds')} />
             </div>
           </div>
+
+          {/* Degraded threshold — only for types that return response_ms */}
+          {(selectedType === 'http' || selectedType === 'port' || selectedType === 'ping') && (
+            <div className='flex flex-col gap-1.5'>
+              <Label htmlFor='m-degraded'>Degraded above (ms) <span className='text-muted-foreground font-normal text-xs'>optional</span></Label>
+              <Input
+                id='m-degraded'
+                type='number'
+                min={1}
+                placeholder='e.g. 500'
+                className='max-w-[140px]'
+                {...form.register('degraded_threshold_ms')}
+              />
+              <p className='text-muted-foreground text-xs'>If response time exceeds this, the check is marked DEGRADED instead of UP.</p>
+            </div>
+          )}
 
           {/* Cron heartbeat URL */}
           {selectedType === 'cron' && currentRow && (

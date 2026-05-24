@@ -8,6 +8,7 @@ export type SshEvent =
 export type SshAuth =
   | { method: 'password'; password: string }
   | { method: 'key'; private_key_pem: string }
+  | { method: 'workspace_vault'; workspace_id: string; vault_item_id: string }
 
 export async function sshConnect(params: {
   host: string

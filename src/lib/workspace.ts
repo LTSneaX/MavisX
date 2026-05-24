@@ -11,7 +11,7 @@ export interface WorkspaceMember {
   id: string
   workspace_id: string
   user_id: string | null
-  email: string
+  email: string | null
   role: 'owner' | 'admin' | 'member'
   status: 'active' | 'pending'
   invited_at: string

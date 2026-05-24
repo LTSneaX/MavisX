@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -6,6 +7,8 @@ import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { db } from '@/lib/db'
+import { FREE_MONITOR_LIMIT } from '@/lib/plan'
+import { usePlanStore } from '@/stores/plan-store'
 import { Plus } from 'lucide-react'
 import { MonitorDeleteDialog } from './components/monitor-delete-dialog'
 import { MonitorMutateDrawer } from './components/monitor-mutate-drawer'
@@ -15,6 +18,9 @@ import { MonitorsTable } from './components/monitors-table'
 function MonitorsContent() {
   const { open, setOpen, currentRow, setCurrentRow } = useMonitors()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const plan = usePlanStore(s => s.plan)
+  const isPro = plan === 'pro' || plan === 'enterprise'
 
   const { data: monitors = [], isLoading } = useQuery({
     queryKey: ['monitors'],
@@ -38,7 +44,7 @@ function MonitorsContent() {
   })
 
   async function handleSubmit(
-    values: { name: string; type: string; target: string; interval_seconds: number; timeout_seconds: number; config: string | null | undefined },
+    values: { name: string; type: string; target: string; interval_seconds: number; timeout_seconds: number; config: string | null | undefined; degraded_threshold_ms?: number | null },
     id?: string
   ) {
     const config = values.config ?? undefined
@@ -51,6 +57,7 @@ function MonitorsContent() {
 
   const upCount = monitors.filter((m) => m.last_status === 'up' && m.enabled).length
   const downCount = monitors.filter((m) => m.last_status === 'down' && m.enabled).length
+  const atMonitorLimit = !isPro && monitors.length >= FREE_MONITOR_LIMIT
 
   return (
     <>
@@ -80,10 +87,17 @@ function MonitorsContent() {
               HTTP, port, DNS, SSL, ping, and cron job checks.
             </p>
           </div>
-          <Button size='sm' onClick={() => { setCurrentRow(null); setOpen('create') }}>
-            <Plus className='mr-1.5 h-3.5 w-3.5' />
-            Add monitor
-          </Button>
+          {atMonitorLimit ? (
+            <Button size='sm' variant='outline' onClick={() => navigate({ to: '/upgrade' })}>
+              <Plus className='mr-1.5 h-3.5 w-3.5' />
+              {monitors.length}/{FREE_MONITOR_LIMIT} — Upgrade
+            </Button>
+          ) : (
+            <Button size='sm' onClick={() => { setCurrentRow(null); setOpen('create') }}>
+              <Plus className='mr-1.5 h-3.5 w-3.5' />
+              Add monitor
+            </Button>
+          )}
         </div>
 
         {isLoading ? (

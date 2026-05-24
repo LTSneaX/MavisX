@@ -91,6 +91,9 @@ pub async fn sftp_connect(
                 .await
                 .map_err(|e| format!("Auth error: {e}"))?
         }
+        SshAuth::WorkspaceVault { .. } => {
+            return Err("Workspace vault auth not supported for SFTP — resolve credential before connecting".to_string())
+        }
     };
 
     if !authenticated {

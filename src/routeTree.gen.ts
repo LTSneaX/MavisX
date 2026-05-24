@@ -28,6 +28,7 @@ import { Route as AuthenticatedSshIndexRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings/index'
 import { Route as AuthenticatedNetworkIndexRouteImport } from './routes/_authenticated/network/index'
 import { Route as AuthenticatedMonitorsIndexRouteImport } from './routes/_authenticated/monitors/index'
+import { Route as AuthenticatedMaintenanceIndexRouteImport } from './routes/_authenticated/maintenance/index'
 import { Route as AuthenticatedLogViewerIndexRouteImport } from './routes/_authenticated/log-viewer/index'
 import { Route as AuthenticatedIncidentsIndexRouteImport } from './routes/_authenticated/incidents/index'
 import { Route as AuthenticatedFilesIndexRouteImport } from './routes/_authenticated/files/index'
@@ -144,6 +145,12 @@ const AuthenticatedMonitorsIndexRoute =
     path: '/monitors/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedMaintenanceIndexRoute =
+  AuthenticatedMaintenanceIndexRouteImport.update({
+    id: '/maintenance/',
+    path: '/maintenance/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedLogViewerIndexRoute =
   AuthenticatedLogViewerIndexRouteImport.update({
     id: '/log-viewer/',
@@ -252,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/files/': typeof AuthenticatedFilesIndexRoute
   '/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/log-viewer/': typeof AuthenticatedLogViewerIndexRoute
+  '/maintenance/': typeof AuthenticatedMaintenanceIndexRoute
   '/monitors/': typeof AuthenticatedMonitorsIndexRoute
   '/network/': typeof AuthenticatedNetworkIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -285,6 +293,7 @@ export interface FileRoutesByTo {
   '/files': typeof AuthenticatedFilesIndexRoute
   '/incidents': typeof AuthenticatedIncidentsIndexRoute
   '/log-viewer': typeof AuthenticatedLogViewerIndexRoute
+  '/maintenance': typeof AuthenticatedMaintenanceIndexRoute
   '/monitors': typeof AuthenticatedMonitorsIndexRoute
   '/network': typeof AuthenticatedNetworkIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
@@ -321,6 +330,7 @@ export interface FileRoutesById {
   '/_authenticated/files/': typeof AuthenticatedFilesIndexRoute
   '/_authenticated/incidents/': typeof AuthenticatedIncidentsIndexRoute
   '/_authenticated/log-viewer/': typeof AuthenticatedLogViewerIndexRoute
+  '/_authenticated/maintenance/': typeof AuthenticatedMaintenanceIndexRoute
   '/_authenticated/monitors/': typeof AuthenticatedMonitorsIndexRoute
   '/_authenticated/network/': typeof AuthenticatedNetworkIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -357,6 +367,7 @@ export interface FileRouteTypes {
     | '/files/'
     | '/incidents/'
     | '/log-viewer/'
+    | '/maintenance/'
     | '/monitors/'
     | '/network/'
     | '/settings/'
@@ -390,6 +401,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/incidents'
     | '/log-viewer'
+    | '/maintenance'
     | '/monitors'
     | '/network'
     | '/settings'
@@ -425,6 +437,7 @@ export interface FileRouteTypes {
     | '/_authenticated/files/'
     | '/_authenticated/incidents/'
     | '/_authenticated/log-viewer/'
+    | '/_authenticated/maintenance/'
     | '/_authenticated/monitors/'
     | '/_authenticated/network/'
     | '/_authenticated/settings/'
@@ -582,6 +595,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMonitorsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/maintenance/': {
+      id: '/_authenticated/maintenance/'
+      path: '/maintenance'
+      fullPath: '/maintenance/'
+      preLoaderRoute: typeof AuthenticatedMaintenanceIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/log-viewer/': {
       id: '/_authenticated/log-viewer/'
       path: '/log-viewer'
@@ -719,6 +739,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFilesIndexRoute: typeof AuthenticatedFilesIndexRoute
   AuthenticatedIncidentsIndexRoute: typeof AuthenticatedIncidentsIndexRoute
   AuthenticatedLogViewerIndexRoute: typeof AuthenticatedLogViewerIndexRoute
+  AuthenticatedMaintenanceIndexRoute: typeof AuthenticatedMaintenanceIndexRoute
   AuthenticatedMonitorsIndexRoute: typeof AuthenticatedMonitorsIndexRoute
   AuthenticatedNetworkIndexRoute: typeof AuthenticatedNetworkIndexRoute
   AuthenticatedSshIndexRoute: typeof AuthenticatedSshIndexRoute
@@ -741,6 +762,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFilesIndexRoute: AuthenticatedFilesIndexRoute,
   AuthenticatedIncidentsIndexRoute: AuthenticatedIncidentsIndexRoute,
   AuthenticatedLogViewerIndexRoute: AuthenticatedLogViewerIndexRoute,
+  AuthenticatedMaintenanceIndexRoute: AuthenticatedMaintenanceIndexRoute,
   AuthenticatedMonitorsIndexRoute: AuthenticatedMonitorsIndexRoute,
   AuthenticatedNetworkIndexRoute: AuthenticatedNetworkIndexRoute,
   AuthenticatedSshIndexRoute: AuthenticatedSshIndexRoute,

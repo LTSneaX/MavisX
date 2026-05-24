@@ -36,13 +36,30 @@ export function MembersTab({ workspaceId, ownerId, isAdmin }: Props) {
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ['workspace-members', workspaceId],
+    staleTime: 0,
     queryFn: async () => {
       const { data } = await supabase
         .from('workspace_members')
-        .select('*')
+        .select('id, workspace_id, user_id, email, role, status, invited_at, joined_at')
         .eq('workspace_id', workspaceId)
         .order('invited_at', { ascending: true })
-      return (data ?? []) as WorkspaceMember[]
+
+      const members = (data ?? []) as WorkspaceMember[]
+
+      // Fill missing emails from profiles table
+      const missing = members.filter((m) => !m.email && m.user_id)
+      if (missing.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, email')
+          .in('id', missing.map((m) => m.user_id!))
+        if (profiles?.length) {
+          const emailMap = Object.fromEntries(profiles.map((p) => [p.id, p.email]))
+          return members.map((m) => ({ ...m, email: m.email ?? emailMap[m.user_id!] ?? m.email }))
+        }
+      }
+
+      return members
     },
   })
 
@@ -89,10 +106,10 @@ export function MembersTab({ workspaceId, ownerId, isAdmin }: Props) {
           {members.map((m) => (
             <div key={m.id} className='flex items-center gap-3 px-4 py-3'>
               <div className='h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold shrink-0'>
-                {m.email.slice(0, 2).toUpperCase()}
+                {(m.email ?? '?').slice(0, 2).toUpperCase()}
               </div>
               <div className='flex-1 min-w-0'>
-                <p className='text-sm font-medium truncate'>{m.email}</p>
+                <p className='text-sm font-medium truncate'>{m.email ?? '—'}</p>
                 {m.status === 'pending' && (
                   <p className='text-[10px] text-amber-500/80'>Invite pending</p>
                 )}

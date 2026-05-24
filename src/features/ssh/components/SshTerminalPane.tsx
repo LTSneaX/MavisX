@@ -24,6 +24,8 @@ interface SshTerminalPaneProps {
   initialHost?: string
   initialPort?: number
   initialUsername?: string
+  wsWorkspaceId?: string
+  wsVaultItemId?: string
   onClose?: () => void
   onConnected?: (host: string, username: string) => void
 }
@@ -32,6 +34,8 @@ export function SshTerminalPane({
   initialHost = '',
   initialPort = 22,
   initialUsername = '',
+  wsWorkspaceId,
+  wsVaultItemId,
   onClose,
   onConnected,
 }: SshTerminalPaneProps) {
@@ -42,6 +46,7 @@ export function SshTerminalPane({
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [termReady, setTermReady] = useState(false)
   const [form, setForm] = useState<ConnectForm>({
     host: initialHost,
     port: String(initialPort),
@@ -50,6 +55,8 @@ export function SshTerminalPane({
     password: '',
     privateKey: '',
   })
+
+  const isVaultAutoConnect = !!(wsWorkspaceId && wsVaultItemId && initialHost && initialUsername)
 
   // Initialize xterm when component mounts
   useEffect(() => {
@@ -110,6 +117,8 @@ export function SshTerminalPane({
     })
     observer.observe(containerRef.current)
 
+    setTermReady(true)
+
     return () => {
       observer.disconnect()
       term.dispose()
@@ -117,6 +126,50 @@ export function SshTerminalPane({
       fitRef.current = null
     }
   }, [])
+
+  // Auto-connect via workspace vault when params are present
+  useEffect(() => {
+    if (!termReady || !isVaultAutoConnect) return
+    const term = termRef.current
+    if (!term) return
+
+    setConnecting(true)
+    setError(null)
+
+    sshConnect({
+      host: initialHost,
+      port: initialPort,
+      username: initialUsername,
+      auth: { method: 'workspace_vault', workspace_id: wsWorkspaceId!, vault_item_id: wsVaultItemId! },
+      cols: term.cols,
+      rows: term.rows,
+      onOutput: (event) => {
+        if (event.type === 'data') {
+          term.write(new Uint8Array(event.data))
+        } else if (event.type === 'exit') {
+          term.write('\r\n\x1b[90m[Connection closed]\x1b[0m\r\n')
+          sessionIdRef.current = null
+          setConnected(false)
+        } else if (event.type === 'error') {
+          term.write(`\r\n\x1b[31m[Error: ${event.message}]\x1b[0m\r\n`)
+        }
+      },
+    })
+      .then((sessionId) => {
+        sessionIdRef.current = sessionId
+        setConnected(true)
+        onConnected?.(initialHost, initialUsername)
+        term.onData((data) => {
+          if (sessionIdRef.current) {
+            sshSendInput(sessionIdRef.current, new TextEncoder().encode(data)).catch(() => {})
+          }
+        })
+        term.focus()
+      })
+      .catch((err) => setError(String(err)))
+      .finally(() => setConnecting(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [termReady])
 
   const handleConnect = useCallback(async () => {
     const term = termRef.current
@@ -170,7 +223,7 @@ export function SshTerminalPane({
     } finally {
       setConnecting(false)
     }
-  }, [form])
+  }, [form, onConnected])
 
   const handleDisconnect = useCallback(async () => {
     if (sessionIdRef.current) {
@@ -219,6 +272,16 @@ export function SshTerminalPane({
       {!connected && (
         <div className='absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/90 backdrop-blur-sm'>
           <div className='w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl'>
+            {/* Vault auto-connect loading state */}
+            {isVaultAutoConnect && !error && (
+              <div className='flex flex-col items-center gap-3 py-4'>
+                <Loader2 className='h-8 w-8 animate-spin text-emerald-400' />
+                <p className='text-sm font-semibold text-zinc-100'>Connecting via vault…</p>
+                <p className='text-xs text-zinc-500'>{initialUsername}@{initialHost}:{initialPort}</p>
+              </div>
+            )}
+            {/* Normal form — shown for manual connect or after vault error */}
+            {(!isVaultAutoConnect || error) && (<>
             <div className='mb-5 flex items-center gap-2'>
               <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10'>
                 <TerminalIcon className='h-4 w-4 text-emerald-400' />
@@ -336,6 +399,7 @@ export function SshTerminalPane({
                 )}
               </Button>
             </div>
+            </>)}
           </div>
         </div>
       )}

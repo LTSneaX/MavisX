@@ -7,8 +7,18 @@ mod sftp;
 mod ssh;
 mod tray;
 mod vault;
+mod ws_vault;
 
 use tauri::Manager;
+
+#[derive(Clone)]
+pub struct SupabaseSession {
+    pub url: String,
+    pub anon_key: String,
+    pub access_token: String,
+}
+
+pub struct SupabaseState(pub std::sync::Mutex<Option<SupabaseSession>>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,6 +35,8 @@ pub fn run() {
         )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(SupabaseState(std::sync::Mutex::new(None)))
+        .manage(ws_vault::WorkspaceVaultKeys(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(vault::VaultKeys(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(ssh::SshSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
         .manage(ssh::SshExecSessions(std::sync::Mutex::new(std::collections::HashMap::new())))
@@ -32,10 +44,15 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::test_monitor,
             commands::check_monitor_now,
+            commands::check_ws_monitor_now,
+            commands::list_status_pages,
+            commands::create_status_page,
+            commands::delete_status_page,
             commands::generate_status_page,
             commands::record_heartbeat,
             commands::get_app_data_dir,
             commands::set_workspace_plan,
+            commands::set_supabase_session,
             // Vault
             vault::vault_list_vaults,
             vault::vault_create_vault,
@@ -76,6 +93,16 @@ pub fn run() {
             sftp::sftp_mkdir,
             sftp::sftp_rename,
             sftp::sftp_disconnect,
+            // Enterprise workspace vault
+            ws_vault::ws_vault_status,
+            ws_vault::ws_vault_create,
+            ws_vault::ws_vault_unlock,
+            ws_vault::ws_vault_lock,
+            ws_vault::ws_vault_list,
+            ws_vault::ws_vault_add,
+            ws_vault::ws_vault_update,
+            ws_vault::ws_vault_delete,
+            ws_vault::ws_vault_get_secret,
             // Network toolkit
             network::ping_host,
             network::port_scan,

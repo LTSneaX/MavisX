@@ -90,12 +90,14 @@ pub struct SshExecSessions(pub Mutex<HashMap<String, SshExecHandle>>);
 pub enum SshAuth {
     Password { password: String },
     Key { private_key_pem: String },
+    WorkspaceVault { workspace_id: String, vault_item_id: String },
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn ssh_connect(
+    app: tauri::AppHandle,
     host: String,
     port: u16,
     username: String,
@@ -111,13 +113,22 @@ pub async fn ssh_connect(
         ..Default::default()
     });
 
+    // Resolve workspace vault credential before opening TCP connection
+    let resolved_auth = match auth {
+        SshAuth::WorkspaceVault { workspace_id, vault_item_id } => {
+            let password = crate::ws_vault::resolve_secret(&app, &workspace_id, &vault_item_id).await?;
+            SshAuth::Password { password }
+        }
+        other => other,
+    };
+
     let handler = ClientHandler { on_output: on_output.clone() };
 
     let mut handle = client::connect(config, (host.as_str(), port), handler)
         .await
         .map_err(|e| format!("Connection failed: {e}"))?;
 
-    let authenticated = match auth {
+    let authenticated = match resolved_auth {
         SshAuth::Password { password } => handle
             .authenticate_password(username.clone(), password)
             .await
@@ -130,6 +141,7 @@ pub async fn ssh_connect(
                 .await
                 .map_err(|e| format!("Auth error: {e}"))?
         }
+        SshAuth::WorkspaceVault { .. } => unreachable!(),
     };
 
     if !authenticated {
@@ -270,6 +282,9 @@ pub async fn ssh_exec(
                 .authenticate_publickey(username, Arc::new(key))
                 .await
                 .map_err(|e| format!("Auth error: {e}"))?
+        }
+        SshAuth::WorkspaceVault { .. } => {
+            return Err("Workspace vault auth not supported for exec — use ssh_connect for PTY sessions".to_string())
         }
     };
 

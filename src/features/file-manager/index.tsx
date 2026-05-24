@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import {
   sftpConnect,
   sftpListDir,
@@ -66,15 +67,21 @@ function ConnectForm({
   onConnect,
   connecting,
   error,
+  initialHost,
+  initialPort,
+  initialUsername,
 }: {
   onConnect: (f: ConnectFormState) => void
   connecting: boolean
   error: string | null
+  initialHost?: string
+  initialPort?: string
+  initialUsername?: string
 }) {
   const [form, setForm] = useState<ConnectFormState>({
-    host: '',
-    port: '22',
-    username: '',
+    host: initialHost ?? '',
+    port: initialPort ?? '22',
+    username: initialUsername ?? '',
     password: '',
   })
 
@@ -247,6 +254,7 @@ function FileRow({
 // ── Main FileManager component ────────────────────────────────────────────────
 
 export function FileManager() {
+  const search = useSearch({ from: '/_authenticated/files/' })
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
@@ -473,6 +481,9 @@ export function FileManager() {
               onConnect={handleConnect}
               connecting={connecting}
               error={connectError}
+              initialHost={search.host}
+              initialPort={search.port}
+              initialUsername={search.username}
             />
           </div>
         )}

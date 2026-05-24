@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearch } from '@tanstack/react-router'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
@@ -8,10 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { db } from '@/lib/db'
-import { Globe, MoreHorizontal, Plus, Trash2, X, RefreshCw, ExternalLink } from 'lucide-react'
+import { Globe, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
 
@@ -100,52 +99,27 @@ function AddBookmarkDialog({ open, onOpenChange, onAdd }: AddDialogProps) {
   )
 }
 
-// ── In-app browser ─────────────────────────────────────────────────────────────
+// ── Open in native webview window (bypasses X-Frame-Options) ──────────────────
 
-interface InAppBrowserProps {
-  title: string
-  url: string
-  onClose: () => void
-}
-
-function InAppBrowser({ title, url, onClose }: InAppBrowserProps) {
-  const [key, setKey] = useState(0)
-
-  async function openExternal() {
-    try { await shellOpen(url) } catch { toast.error('Could not open URL') }
+async function openInWebview(url: string, title: string) {
+  try {
+    const label = `web-${Date.now()}`
+    const win = new WebviewWindow(label, {
+      url,
+      title: `MavisX — ${title}`,
+      width: 1400,
+      height: 900,
+      center: true,
+      resizable: true,
+      decorations: true,
+    })
+    win.once('tauri://error', async () => {
+      toast.error('Could not open web viewer, falling back to browser')
+      await shellOpen(url)
+    })
+  } catch {
+    await shellOpen(url)
   }
-
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className='max-w-[95vw] w-[95vw] h-[90vh] flex flex-col gap-0 p-0'>
-        {/* Browser chrome */}
-        <div className='flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/30 shrink-0'>
-          <Globe className='h-4 w-4 text-muted-foreground shrink-0' />
-          <span className='text-sm font-medium truncate flex-1'>{title}</span>
-          <span className='font-mono text-[11px] text-muted-foreground truncate max-w-[300px]'>{url}</span>
-          <div className='flex items-center gap-1 ml-2'>
-            <Button variant='ghost' size='icon' className='h-7 w-7' onClick={() => setKey(k => k + 1)} title='Reload'>
-              <RefreshCw className='h-3.5 w-3.5' />
-            </Button>
-            <Button variant='ghost' size='icon' className='h-7 w-7' onClick={openExternal} title='Open in browser'>
-              <ExternalLink className='h-3.5 w-3.5' />
-            </Button>
-            <Button variant='ghost' size='icon' className='h-7 w-7' onClick={onClose} title='Close'>
-              <X className='h-3.5 w-3.5' />
-            </Button>
-          </div>
-        </div>
-        {/* iframe */}
-        <iframe
-          key={key}
-          src={url}
-          className='flex-1 w-full border-0'
-          title={title}
-          sandbox='allow-scripts allow-same-origin allow-forms allow-popups'
-        />
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 // ── Web card ──────────────────────────────────────────────────────────────────
@@ -220,10 +194,17 @@ function WebCard({ id, name, url, onDelete, onOpen }: WebCardProps) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export function WebViewer() {
+  const routeSearch = useSearch({ from: '/_authenticated/web-viewer/' })
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [activeEntry, setActiveEntry] = useState<{ title: string; url: string } | null>(null)
+
+  useEffect(() => {
+    if (routeSearch.url) {
+      const url = routeSearch.url.startsWith('http') ? routeSearch.url : `https://${routeSearch.url}`
+      openInWebview(url, routeSearch.name ?? url)
+    }
+  }, [routeSearch.url, routeSearch.name])
 
   const { data: connections = [], isLoading } = useQuery({
     queryKey: ['connections'],
@@ -308,7 +289,7 @@ export function WebViewer() {
             )}
           </div>
         ) : (
-          <div className='grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
+          <div className='grid gap-3 grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'>
             {filtered.map(c => (
               <WebCard
                 key={c.id}
@@ -316,7 +297,7 @@ export function WebViewer() {
                 name={c.name}
                 url={normalizeUrl(c.host ?? '')}
                 onDelete={id => deleteMutation.mutate(id)}
-                onOpen={() => setActiveEntry({ title: c.name, url: normalizeUrl(c.host ?? '') })}
+                onOpen={() => openInWebview(normalizeUrl(c.host ?? ''), c.name)}
               />
             ))}
           </div>
@@ -329,13 +310,6 @@ export function WebViewer() {
         onAdd={(name, url) => saveMutation.mutateAsync({ name, url })}
       />
 
-      {activeEntry && (
-        <InAppBrowser
-          title={activeEntry.title}
-          url={activeEntry.url}
-          onClose={() => setActiveEntry(null)}
-        />
-      )}
     </>
   )
 }

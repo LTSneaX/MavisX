@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, CheckCircle, XCircle, Clock, ToggleLeft, ToggleRight, Pencil } from 'lucide-react'
+import { Plus, Trash2, CheckCircle, XCircle, Clock, ToggleLeft, ToggleRight, Pencil, Zap, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { supabase } from '@/lib/supabase'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase'
+import { db } from '@/lib/db'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +21,28 @@ export function MonitorsTab({ workspaceId, isAdmin }: Props) {
   const [editTarget, setEditTarget] = useState<null | {
     id: string; name: string; type: string; target: string; interval_seconds: number
   }>(null)
+  const [testing, setTesting] = useState<string | null>(null)
+  const { auth } = useAuthStore()
+
+  async function handleTestNow(m: {
+    id: string; type: string; target: string; timeout_seconds: number; config?: string | null
+  }) {
+    if (testing) return
+    const accessToken = auth.accessToken
+    if (!accessToken) { toast.error('Not authenticated'); return }
+    setTesting(m.id)
+    try {
+      const result = await db.checkWsMonitorNow(m.id, m.type, m.target, m.timeout_seconds ?? 10, m.config, SUPABASE_URL, SUPABASE_ANON_KEY, accessToken)
+      toast[result.status === 'up' ? 'success' : 'error'](
+        `${m.target} — ${result.status.toUpperCase()}${result.response_ms != null ? ` (${result.response_ms}ms)` : ''}${result.detail ? ` · ${result.detail}` : ''}`
+      )
+      qc.invalidateQueries({ queryKey: ['ws-monitors', workspaceId] })
+    } catch (err) {
+      toast.error(`Test failed: ${String(err)}`)
+    } finally {
+      setTesting(null)
+    }
+  }
 
   const { data: monitors = [], isLoading } = useQuery({
     queryKey: ['ws-monitors', workspaceId],
@@ -30,6 +54,7 @@ export function MonitorsTab({ workspaceId, isAdmin }: Props) {
         .order('created_at', { ascending: true })
       return data ?? []
     },
+    refetchInterval: 10_000,
   })
 
   const deleteMon = useMutation({
@@ -94,8 +119,19 @@ export function MonitorsTab({ workspaceId, isAdmin }: Props) {
                 {m.response_ms != null && <p className='tabular-nums'>{m.response_ms}ms</p>}
                 <p>every {m.interval_seconds}s</p>
               </div>
-              {isAdmin && (
-                <div className='flex items-center gap-1 shrink-0'>
+              <div className='flex items-center gap-1 shrink-0'>
+                <Button
+                  size='sm' variant='ghost'
+                  className='h-7 w-7 p-0 text-muted-foreground hover:text-amber-400'
+                  disabled={testing === m.id}
+                  onClick={() => handleTestNow(m)}
+                  title='Test now'
+                >
+                  {testing === m.id
+                    ? <Loader2 className='h-3.5 w-3.5 animate-spin' />
+                    : <Zap className='h-3.5 w-3.5' />}
+                </Button>
+                {isAdmin && (<>
                   <Button
                     size='sm' variant='ghost' className='h-7 w-7 p-0'
                     onClick={() => toggleMon.mutate({ id: m.id, enabled: !m.enabled })}
@@ -116,8 +152,8 @@ export function MonitorsTab({ workspaceId, isAdmin }: Props) {
                   >
                     <Trash2 className='h-3.5 w-3.5' />
                   </Button>
-                </div>
-              )}
+                </>)}
+              </div>
             </div>
           ))}
         </div>

@@ -1,6 +1,9 @@
+import { useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
+import { invoke } from '@tauri-apps/api/core'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -14,6 +17,22 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        invoke('set_supabase_session', { url: '', anon_key: '', access_token: '' }).catch(() => {})
+      } else if (session?.access_token) {
+        invoke('set_supabase_session', {
+          url: SUPABASE_URL,
+          anon_key: SUPABASE_ANON_KEY,
+          access_token: session.access_token,
+        }).catch(() => {})
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   return (
     <SearchProvider>
       <LayoutProvider>

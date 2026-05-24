@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Activity, Plug, Users, LayoutDashboard, Crown, Shield, User } from 'lucide-react'
+import { X, Activity, Plug, Users, LayoutDashboard, Crown, Shield, User, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceWindowStore } from '@/stores/workspace-window-store'
 import { useAuthStore } from '@/stores/auth-store'
@@ -9,12 +9,14 @@ import { OverviewTab } from './tabs/overview'
 import { MonitorsTab } from './tabs/monitors'
 import { ConnectionsTab } from './tabs/connections'
 import { MembersTab } from './tabs/members'
+import { VaultTab } from './tabs/vault'
 import { cn } from '@/lib/utils'
 
 const TABS = [
   { id: 'overview',     label: 'Overview',     icon: LayoutDashboard },
   { id: 'monitors',     label: 'Monitors',     icon: Activity },
   { id: 'connections',  label: 'Connections',  icon: Plug },
+  { id: 'vault',        label: 'Vault',        icon: ShieldCheck },
   { id: 'members',      label: 'Members',      icon: Users },
 ] as const
 
@@ -106,7 +108,10 @@ export function WorkspaceOverlay() {
           <MonitorsTab workspaceId={workspace.id} isAdmin={isAdmin} />
         )}
         {activeTab === 'connections' && (
-          <ConnectionsTab workspaceId={workspace.id} isAdmin={isAdmin} />
+          <ConnectionsTab workspaceId={workspace.id} isAdmin={isAdmin} closeOverlay={closeWorkspace} />
+        )}
+        {activeTab === 'vault' && (
+          <VaultTab workspaceId={workspace.id} isAdmin={isAdmin} />
         )}
         {activeTab === 'members' && (
           <MembersTab workspaceId={workspace.id} ownerId={workspace.owner_id} isAdmin={isAdmin} />

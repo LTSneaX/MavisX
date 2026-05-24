@@ -2,6 +2,7 @@ import {
   Activity,
   AlertTriangle,
   Bell,
+  CalendarClock,
   Container,
   FileText,
   FolderOpen,
@@ -37,9 +38,10 @@ export const sidebarData: SidebarData = {
       title: 'Monitoring',
       items: [
         { title: 'Overview',     url: '/',            icon: LayoutDashboard },
-        { title: 'Monitors',     url: '/monitors',    icon: Activity },
-        { title: 'Incidents',    url: '/incidents',   icon: AlertTriangle },
-        { title: 'Status Page',  url: '/status-page', icon: Globe, pro: true },
+        { title: 'Monitors',     url: '/monitors',     icon: Activity },
+        { title: 'Incidents',    url: '/incidents',    icon: AlertTriangle },
+        { title: 'Maintenance',  url: '/maintenance',  icon: CalendarClock },
+        { title: 'Status Page',  url: '/status-page',  icon: Globe, pro: true },
       ],
     },
     {
@@ -63,7 +65,7 @@ export const sidebarData: SidebarData = {
     {
       title: 'Team',
       items: [
-        { title: 'Workspaces', url: '/cloud', icon: Users, pro: true },
+        { title: 'Workspaces', url: '/cloud', icon: Users, enterprise: true },
       ],
     },
     {

@@ -71,10 +71,19 @@ function ProBadge() {
   )
 }
 
+function EnterpriseBadge() {
+  return (
+    <span className='ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-bold leading-none tracking-wide bg-blue-600/20 text-blue-400 border border-blue-500/30'>
+      ENT
+    </span>
+  )
+}
+
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
   const plan = usePlanStore((s) => s.plan)
   const showProBadge = item.pro && plan === 'free'
+  const showEntBadge = item.enterprise && plan !== 'enterprise'
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -87,6 +96,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
           <span>{item.title}</span>
           {item.badge && <NavBadge>{item.badge}</NavBadge>}
           {showProBadge && <ProBadge />}
+          {showEntBadge && <EnterpriseBadge />}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>

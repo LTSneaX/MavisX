@@ -17,6 +17,7 @@ type BaseNavItem = {
   badge?: string
   icon?: React.ElementType
   pro?: boolean
+  enterprise?: boolean
 }
 
 type NavLink = BaseNavItem & {
