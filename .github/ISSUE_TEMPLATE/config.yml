@@ -1,5 +1,9 @@
+# Force testers through the structured forms — no blank issues.
 blank_issues_enabled: false
 contact_links:
-  - name: Shadcn-Admin Discussions
-    url: https://github.com/satnaing/shadcn-admin/discussions
-    about: Please ask and answer questions here.
+  - name: "\U0001F310 MavisX website"
+    url: https://mavisx.app
+    about: Product info, download, and docs.
+  - name: "\U0001F4AC Questions & general discussion"
+    url: https://github.com/LTSneaX/MavisX/discussions
+    about: For questions and open-ended discussion (not bug reports).

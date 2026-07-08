@@ -212,7 +212,7 @@ The frontend calls Rust via `invoke('command', args)` for request/response and `
 
 ```bash
 git clone https://github.com/LTSneaX/MavisX.git
-cd MavisX/mavisx-app
+cd MavisX
 pnpm install
 pnpm tauri:dev
 ```
@@ -223,8 +223,8 @@ First compile takes 3–5 minutes (Rust cold build). Subsequent starts are fast.
 ```bash
 pnpm tauri:build
 # Output: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/
-#   MavisX_0.1.0_x64_en-US.msi
-#   MavisX_0.1.0_x64-setup.exe
+#   MavisX_0.3.0_x64_en-US.msi
+#   MavisX_0.3.0_x64-setup.exe
 ```
 
 > Kill any running `mavisx.exe` before building — the linker will fail if the exe is locked.
@@ -237,6 +237,18 @@ See [`BLUEPRINT.md`](../BLUEPRINT.md) for the full module specs.
 
 **Done:** Lemon Squeezy billing (Free / Pro, test mode) + plan-gate enforcement.
 **Immediate next:** Workspace monitor checking engine → re-enable Enterprise (`ENABLE_ENTERPRISE = true`) → Public launch.
+
+---
+
+## Beta testing / reporting issues
+
+MavisX is in beta. If you're testing it, your reports are how it gets better.
+
+- **Bug?** File a [Bug report](https://github.com/LTSneaX/MavisX/issues/new?template=bug_report.yml) — structured form asks for steps to reproduce, OS + app version, and which feature.
+- **Idea?** File a [Feature request](https://github.com/LTSneaX/MavisX/issues/new?template=feature_request.yml).
+- **Question?** Use [Discussions](https://github.com/LTSneaX/MavisX/discussions) or the [website](https://mavisx.app).
+
+See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) for a short guide on filing a good report. Please redact secrets (passwords, keys, tokens) before pasting logs or screenshots.
 
 ---
 

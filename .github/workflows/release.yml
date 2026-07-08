@@ -1,0 +1,72 @@
+# Release pipeline for MavisX (Tauri v2, Windows).
+# Trigger: push a semver tag (e.g. v0.3.0). Builds .msi + .exe on a native
+# Windows runner and attaches them to a GitHub Release (created as a DRAFT
+# so it is reviewed before it goes public).
+# This is ADDITIVE to ci.yml — ci.yml remains the pre-merge gate on main.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # e.g. v0.3.0 — only version tags cut a release build
+
+# tauri-action needs write access to create the Release and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # windows-latest = native MSVC toolchain + WebView2 + signtool.
+    # Linux/macOS runners CANNOT produce Windows .msi/.exe.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm is the enforced package manager (CLAUDE.md: no npm/yarn for install).
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # MSVC target explicitly — matches the pinned toolchain.
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # Cache the Rust build — cold Tauri builds are 3-5 min (per README).
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # Install frontend deps with the committed lockfile.
+      # tauri build later runs beforeBuildCommand which produces ../dist
+      # before the Rust bundle step.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Official Tauri action: runs `tauri build`, discovers the .msi/.exe
+      # bundles, creates the GitHub Release, and uploads them as assets.
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auto-provided; no secret to add
+          # --- Code signing (LEFT UNSET for now — SneaX's decision) ---
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }} # uses the tag that triggered the run
+          releaseName: 'MavisX ${{ github.ref_name }}'
+          releaseBody: 'See CHANGELOG.md for the full list of changes.'
+          releaseDraft: true # GATE: publish manually after review
+          prerelease: false
+          # projectPath defaults to repo root — package.json/tauri.conf.json are at root.

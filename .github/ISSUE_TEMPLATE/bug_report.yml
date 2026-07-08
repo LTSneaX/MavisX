@@ -1,0 +1,87 @@
+name: "\U0001F41E Bug report"
+description: Something in MavisX broke or behaved unexpectedly. Help us reproduce it.
+title: "[Bug]: "
+labels: ["bug", "needs-triage", "tester-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing MavisX! A good bug report gets fixed faster.
+        Please fill in as much as you can — a clear repro is the single most useful thing.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug.
+      placeholder: When I connect over SSH and open a second tab, the first terminal freezes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps so we can see it too.
+      placeholder: |
+        1. Go to Connections
+        2. Open an SSH session to host X
+        3. Open a second SSH tab
+        4. Type in the first tab — nothing happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      description: What did you expect to happen, and what happened instead?
+      placeholder: |
+        Expected: both terminals stay responsive.
+        Actual: the first terminal stops accepting input.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Which feature?
+      description: Where in the app did this happen?
+      options:
+        - Monitors / uptime
+        - SSH terminal
+        - SFTP file manager
+        - Docker manager
+        - Credential vault
+        - Alerts / notifications
+        - Network toolkit
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: MavisX version
+      description: Shown in the app's About / settings, or the installer filename (e.g. 0.3.0).
+      placeholder: 0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Windows version / build.
+      placeholder: Windows 11 23H2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Paste any error text, or drag in screenshots. Redact secrets (passwords, keys, tokens) first.
+      placeholder: Drag images here or paste log output.
+    validations:
+      required: false
