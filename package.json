@@ -2,6 +2,7 @@
   "name": "mavisx-app",
   "private": true,
   "version": "0.3.0",
+  "packageManager": "pnpm@11.10.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
