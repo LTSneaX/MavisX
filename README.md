@@ -246,4 +246,4 @@ See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) for a short guide on fi
 
 ## License
 
-[Elastic License 2.0 (ELv2)](LICENSE) — source available, commercial use permitted, managed service / SaaS resale prohibited. Copyright © 2026 LTSneaX.
+MavisX is source-available under the **Elastic License 2.0** — see [LICENSE](./LICENSE). You may view, use, and modify the source; you may not offer it as a hosted service or circumvent the license-key/subscription functionality.
