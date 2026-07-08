@@ -246,7 +246,7 @@ MavisX is in beta. If you're testing it, your reports are how it gets better.
 
 - **Bug?** File a [Bug report](https://github.com/LTSneaX/MavisX/issues/new?template=bug_report.yml) — structured form asks for steps to reproduce, OS + app version, and which feature.
 - **Idea?** File a [Feature request](https://github.com/LTSneaX/MavisX/issues/new?template=feature_request.yml).
-- **Question?** Use [Discussions](https://github.com/LTSneaX/MavisX/discussions) or the [website](https://mavisx.app).
+- **Question?** Use [Discussions](https://github.com/LTSneaX/MavisX/discussions) or the [website](https://mavisx.ortzabari.co.il).
 
 See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) for a short guide on filing a good report. Please redact secrets (passwords, keys, tokens) before pasting logs or screenshots.
 

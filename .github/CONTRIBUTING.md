@@ -22,7 +22,7 @@ Open a [Feature request](https://github.com/LTSneaX/MavisX/issues/new?template=f
 
 ## Just a question?
 
-Use [Discussions](https://github.com/LTSneaX/MavisX/discussions) or the [website](https://mavisx.app) — not the issue tracker.
+Use [Discussions](https://github.com/LTSneaX/MavisX/discussions) or the [website](https://mavisx.ortzabari.co.il) — not the issue tracker.
 
 ## A few tips for great reports
 
