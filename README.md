@@ -27,31 +27,24 @@ A Tauri v2 desktop app that replaces Uptime Kuma, Termius, FileZilla, Portainer,
 | Cloud auth (Supabase — accounts, invite flow, JWT plan tokens) | All | ✅ |
 | Billing (Lemon Squeezy — Pro checkout + webhook) | Pro | ✅ |
 | Plan gate enforcement (`requirePro()` route guards + monitor limits) | Pro | ✅ |
-| Enterprise workspace (invite, RBAC, shared monitors/connections) | Enterprise | 🚧 Disabled |
-| Workspace monitor checking engine | Enterprise | 🔲 Next |
-
-> **Enterprise is temporarily disabled**, not removed. It sits behind the `ENABLE_ENTERPRISE = false` flag in `src/config/features.ts` — hidden from every purchase surface (Upgrade page, pricing cards, nav badge) while all Enterprise code (the `'enterprise'` plan type, `requireEnterprise()` route guard, `/cloud` workspaces, webhook plan mapping) stays live. Flip the flag to `true` to re-enable for launch — no re-plumbing required.
 
 ---
 
 ## Plans
 
-Pricing is charged through **Lemon Squeezy** (merchant of record). **Free** and **Pro** are live; **Enterprise is planned but currently disabled** (see the note above) — its column below documents the intended shape, not a purchasable tier today.
+Pricing is charged through **Lemon Squeezy** (merchant of record). **Free** and **Pro** are both live.
 
-| | Free | Pro | Enterprise *(disabled)* |
-|---|---|---|---|
-| **Price** | $0 | $9/mo | $6/seat/mo |
-| Monitors | Up to 5 | Unlimited | Unlimited |
-| Check interval | 5 min | 30 sec | 30 sec |
-| SSH connections | 1 | Unlimited | Unlimited |
-| Credential vaults | 1 | 3 | Up to 10 |
-| Notification channels | 11 free channels | All 16 | All 16 |
-| SSH Terminal, File Manager, Log Viewer | — | ✓ | ✓ |
-| Agent metrics, Docker manager | — | ✓ | ✓ |
-| Status page, Alert rules, Web Viewer | — | ✓ | ✓ |
-| Team workspaces | — | — | ✓ |
-| Shared connections & monitors | — | — | ✓ |
-| RBAC + audit logs | — | — | ✓ |
+| | Free | Pro |
+|---|---|---|
+| **Price** | $0 | $9/mo |
+| Monitors | Up to 5 | Unlimited |
+| Check interval | 5 min | 30 sec |
+| SSH connections | 1 | Unlimited |
+| Credential vaults | 1 | 3 |
+| Notification channels | 11 free channels | All 16 |
+| SSH Terminal, File Manager, Log Viewer | — | ✓ |
+| Agent metrics, Docker manager | — | ✓ |
+| Status page, Alert rules, Web Viewer | — | ✓ |
 
 ---
 
@@ -75,13 +68,12 @@ Auth is **Supabase Auth** (`src/lib/supabase.ts`) — *not* Clerk. (A stale `VIT
 
 A user's plan is resolved by `resolvePlan()` in `src/stores/plan-store.ts`:
 
-1. **JWT first** — `parsePlanFromToken()` reads `app_metadata.plan` from the Supabase access token (`'pro'` / `'enterprise'` win; anything else is `'free'`).
+1. **JWT first** — `parsePlanFromToken()` reads `app_metadata.plan` from the Supabase access token (`'pro'` wins; anything else is `'free'`).
 2. **DB fallback** — if the JWT carries no paid plan (e.g. the custom-access-token hook isn't enabled), it falls back to the `profiles.plan` column via a Supabase query.
 
 The resolved plan lives in the Zustand `usePlanStore`. Feature gating hangs off it (`src/lib/plan.ts`):
 
 - `requirePro()` — used in route `beforeLoad` guards (e.g. `/ssh`, `/docker`, `/vault`, `/agents`, `/files`, `/log-viewer`, `/web-viewer`, `/status-page`, `/alerts`); redirects free users to `/upgrade`.
-- `requireEnterprise()` — guards the `/cloud` workspace route (code intact even while Enterprise is flag-disabled).
 - `FREE_MONITOR_LIMIT = 5` — enforced in `src/features/monitors/index.tsx` (free users are blocked from adding beyond 5).
 
 ### Checkout flow
@@ -104,7 +96,7 @@ A **Supabase Edge Function** (`supabase/functions/lemon-webhook/index.ts`) recei
 4. Derives the target plan from subscription **status** when present (`active`/`on_trial`/`paid` → paid; `cancelled`/`expired`/`past_due`/`unpaid` → free), which makes replays and out-of-order deliveries converge; falls back to an event-name switch for one-shot events like `order_created`.
 5. Updates `public.profiles` (`plan` plus Lemon customer/subscription/variant ids) via the `service_role` client, then writes `app_metadata.plan` so the next JWT refresh carries the plan. Unactionable events are acked with `200` so Lemon Squeezy stops retrying.
 
-Paid variants currently all map to `pro` via a `?? 'pro'` fallback (`PLAN_MAP` is intentionally empty); numeric variant IDs get added there when Enterprise re-enables.
+Paid variants currently all map to `pro` via a `?? 'pro'` fallback (`PLAN_MAP` is intentionally empty); numeric variant IDs get added there as new paid variants are introduced.
 
 ### Environment variables
 
@@ -202,7 +194,7 @@ supabase/
 
 > **SQLite migration registration:** All `.sql` files must be manually added to `commands.rs → pub fn migrations()` with the next version number. They are NOT auto-discovered.
 
-The frontend calls Rust via `invoke('command', args)` for request/response and `Channel<T>` for streaming (SSH terminal, log viewer). Local data (personal monitors, connections, vault) lives in SQLite — no cloud required on the free tier. Enterprise workspace data (shared monitors, connections, members) is stored in Supabase.
+The frontend calls Rust via `invoke('command', args)` for request/response and `Channel<T>` for streaming (SSH terminal, log viewer). Local data (personal monitors, connections, vault) lives in SQLite — no cloud required on the free tier.
 
 ---
 
@@ -236,7 +228,7 @@ pnpm tauri:build
 See [`BLUEPRINT.md`](../BLUEPRINT.md) for the full module specs.
 
 **Done:** Lemon Squeezy billing (Free / Pro, test mode) + plan-gate enforcement.
-**Immediate next:** Workspace monitor checking engine → re-enable Enterprise (`ENABLE_ENTERPRISE = true`) → Public launch.
+**Immediate next:** Public launch.
 
 ---
 
