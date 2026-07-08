@@ -92,7 +92,7 @@ export function OverviewTab({ workspaceId }: Props) {
                 <Tooltip
                   cursor={{ fill: 'rgba(255,255,255,0.03)' }}
                   contentStyle={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 6, fontSize: 11 }}
-                  formatter={(v: number) => [`${v} ms`, 'Response']}
+                  formatter={(v) => [`${v} ms`, 'Response']}
                 />
                 <Bar dataKey='ms' radius={[0, 3, 3, 0]} maxBarSize={18}>
                   {rtData.map((entry, i) => (

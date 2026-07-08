@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import {
   Users, Plus, Trash2, Crown, Shield, User, Mail,
-  MoreHorizontal, Lock, Pencil, Check, X,
+  MoreHorizontal, Pencil, Check, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Header } from '@/components/layout/header'
@@ -285,10 +284,10 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
               <div key={m.id} className='flex items-center justify-between py-1.5 border-b border-border/30 last:border-0'>
                 <div className='flex items-center gap-2 min-w-0'>
                   <div className='h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold shrink-0'>
-                    {m.email.slice(0, 2).toUpperCase()}
+                    {(m.email ?? '??').slice(0, 2).toUpperCase()}
                   </div>
                   <div className='min-w-0'>
-                    <p className='text-xs truncate'>{m.email}</p>
+                    <p className='text-xs truncate'>{m.email ?? 'Unknown'}</p>
                     {m.status === 'pending' && (
                       <p className='text-[10px] text-amber-500/80'>Invite pending</p>
                     )}

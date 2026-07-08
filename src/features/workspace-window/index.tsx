@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X, Activity, Plug, Users, LayoutDashboard, Crown, Shield, User, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'

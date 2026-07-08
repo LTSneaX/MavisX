@@ -29,7 +29,7 @@ function RoleBadge({ role }: { role: WorkspaceMember['role'] }) {
   )
 }
 
-export function MembersTab({ workspaceId, ownerId, isAdmin }: Props) {
+export function MembersTab({ workspaceId, isAdmin }: Props) {
   const qc = useQueryClient()
   const { auth } = useAuthStore()
   const [inviteOpen, setInviteOpen] = useState(false)

@@ -259,7 +259,7 @@ export function StatusPageFeature() {
       <AddPageDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreate={name => createMutation.mutateAsync(name)}
+        onCreate={async name => { await createMutation.mutateAsync(name) }}
       />
     </>
   )

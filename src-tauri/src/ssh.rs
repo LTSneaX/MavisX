@@ -141,7 +141,12 @@ pub async fn ssh_connect(
                 .await
                 .map_err(|e| format!("Auth error: {e}"))?
         }
-        SshAuth::WorkspaceVault { .. } => unreachable!(),
+        SshAuth::WorkspaceVault { .. } => {
+            return Err(
+                "Internal error: workspace vault credential was not resolved before authentication"
+                    .to_string(),
+            )
+        }
     };
 
     if !authenticated {

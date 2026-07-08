@@ -71,7 +71,7 @@ function ProtocolButton({ conn }: { conn: Connection }) {
     if (!conn.host) return
 
     if (conn.type === 'ssh') {
-      navigate({ to: '/ssh', search: { host: conn.host, port: conn.port ?? 22, username: conn.username ?? '' } })
+      navigate({ to: '/ssh', search: { host: conn.host, port: conn.port ?? 22, username: conn.username ?? '', ws_workspace_id: undefined, ws_vault_item_id: undefined } })
       return
     }
     if (conn.type === 'sftp') {

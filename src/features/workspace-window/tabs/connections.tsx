@@ -22,6 +22,10 @@ const CONN_TYPES = ['ssh', 'sftp', 'ftp', 'rdp', 'vnc', 'telnet', 'docker', 'web
 
 type ConnType = typeof CONN_TYPES[number]
 
+// FTP hidden for v0.3.0 — no real FTP backend yet (would silently connect over SFTP); re-enable when suppaftp/ftp lib is added.
+// CONN_TYPES keeps 'ftp' so existing FTP connections still render/connect; only the picker below hides it.
+const SELECTABLE_CONN_TYPES = CONN_TYPES.filter((t) => t !== 'ftp')
+
 const TYPE_META: Record<ConnType, { label: string; icon: React.ElementType; color: string }> = {
   ssh:    { label: 'SSH',    icon: Terminal,   color: 'text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10' },
   sftp:   { label: 'SFTP',  icon: FolderOpen, color: 'text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/10'         },
@@ -31,13 +35,6 @@ const TYPE_META: Record<ConnType, { label: string; icon: React.ElementType; colo
   telnet: { label: 'Telnet',icon: Terminal,   color: 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10'     },
   docker: { label: 'Docker',icon: Container,  color: 'text-sky-400 border-sky-500/30 hover:bg-sky-500/10'           },
   web:    { label: 'Web',   icon: Globe,      color: 'text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10'   },
-}
-
-function ConnIcon({ type }: { type: string }) {
-  const meta = TYPE_META[type as ConnType]
-  if (!meta) return <Server className='h-4 w-4 text-muted-foreground shrink-0' />
-  const Icon = meta.icon
-  return <Icon className='h-4 w-4 text-muted-foreground shrink-0' />
 }
 
 const DEFAULT_PORT: Record<string, number> = {
@@ -133,8 +130,9 @@ export function ConnectionsTab({ workspaceId, isAdmin, closeOverlay }: Props) {
           host: c.host,
           port: c.port ?? 22,
           username: c.username ?? '',
-          ...(c.vault_item_id ? { ws_workspace_id: workspaceId, ws_vault_item_id: c.vault_item_id } : {}),
-        } as Parameters<typeof navigate>[0]['search'],
+          ws_workspace_id: c.vault_item_id ? workspaceId : undefined,
+          ws_vault_item_id: c.vault_item_id ?? undefined,
+        },
       })
       return
     }
@@ -146,20 +144,30 @@ export function ConnectionsTab({ workspaceId, isAdmin, closeOverlay }: Props) {
           host: c.host,
           port: String(c.port ?? 22),
           username: c.username ?? '',
-          ...(c.vault_item_id ? { ws_workspace_id: workspaceId, ws_vault_item_id: c.vault_item_id } : {}),
-        } as Parameters<typeof navigate>[0]['search'],
+          ws_workspace_id: c.vault_item_id ? workspaceId : undefined,
+          ws_vault_item_id: c.vault_item_id ?? undefined,
+        },
       })
       return
     }
 
     if (c.type === 'ftp') {
-      navigate({ to: '/files', search: { host: c.host, port: String(c.port ?? 21), username: c.username ?? '' } as Parameters<typeof navigate>[0]['search'] })
+      navigate({
+        to: '/files',
+        search: {
+          host: c.host,
+          port: String(c.port ?? 21),
+          username: c.username ?? '',
+          ws_workspace_id: undefined,
+          ws_vault_item_id: undefined,
+        },
+      })
       return
     }
 
     if (c.type === 'web') {
       const url = c.host?.startsWith('http') ? c.host : `https://${c.host}`
-      navigate({ to: '/web-viewer', search: { url, name: c.name } as Parameters<typeof navigate>[0]['search'] })
+      navigate({ to: '/web-viewer', search: { url, name: c.name } })
       return
     }
 
@@ -385,7 +393,7 @@ function EditConnectionDialog({
               <Label>Type</Label>
               <select value={type} onChange={(e) => setType(e.target.value)}
                 className='rounded-md border border-input bg-background px-3 py-2 text-sm'>
-                {CONN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                {SELECTABLE_CONN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
               </select>
             </div>
           </div>
@@ -476,7 +484,7 @@ function AddConnectionDialog({
               <Label>Type</Label>
               <select value={type} onChange={(e) => setType(e.target.value)}
                 className='rounded-md border border-input bg-background px-3 py-2 text-sm'>
-                {CONN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
+                {SELECTABLE_CONN_TYPES.map((t) => <option key={t} value={t}>{t.toUpperCase()}</option>)}
               </select>
             </div>
           </div>

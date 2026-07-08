@@ -103,7 +103,8 @@ export function MonitorsTab({ workspaceId, isAdmin }: Props) {
         <div className='rounded-lg border border-border/50 bg-card divide-y divide-border/30'>
           {monitors.map((m: {
             id: string; name: string; type: string; target: string;
-            status: string; enabled: boolean; response_ms: number; interval_seconds: number
+            status: string; enabled: boolean; response_ms: number; interval_seconds: number;
+            timeout_seconds: number; config?: string | null
           }) => (
             <div key={m.id} className='flex items-center gap-3 px-4 py-3'>
               <StatusDot status={m.status} enabled={m.enabled} />
