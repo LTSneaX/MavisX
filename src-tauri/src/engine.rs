@@ -314,6 +314,7 @@ pub async fn run_check_and_save(monitor: MonitorRow, pool: SqlitePool, app: AppH
 #[derive(Debug, Clone, serde::Deserialize)]
 struct WorkspaceMonitorRow {
     id: String,
+    workspace_id: String,
     #[serde(rename = "type")]
     monitor_type: String,
     target: String,
@@ -322,6 +323,11 @@ struct WorkspaceMonitorRow {
     config: Option<serde_json::Value>,
     last_checked_at: Option<String>,
 }
+
+/// Lease TTL is ~2x the monitor interval so a closed app's lease expires and
+/// another member can take over. Clamped server-side by claim_workspace_poll_lease.
+const LEASE_MULTIPLIER: i64 = 2;
+const LEASE_MIN_SECONDS: i64 = 30;
 
 pub async fn run_workspace_cycle(app: &AppHandle) {
     let state = app.state::<crate::SupabaseState>();
@@ -341,7 +347,7 @@ pub async fn run_workspace_cycle(app: &AppHandle) {
 
     let resp = match client
         .get(format!(
-            "{}/rest/v1/workspace_monitors?enabled=eq.true&select=id,type,target,interval_seconds,timeout_seconds,config,last_checked_at",
+            "{}/rest/v1/workspace_monitors?enabled=eq.true&select=id,workspace_id,type,target,interval_seconds,timeout_seconds,config,last_checked_at",
             session.url
         ))
         .header("apikey", &session.anon_key)
@@ -359,66 +365,253 @@ pub async fn run_workspace_cycle(app: &AppHandle) {
         Err(e) => { error!("[ws-engine] Parse failed: {e}"); return; }
     };
 
+    // Group monitors by workspace so we can lease per workspace.
+    let mut by_workspace: std::collections::HashMap<String, Vec<WorkspaceMonitorRow>> =
+        std::collections::HashMap::new();
+    for m in monitors {
+        by_workspace.entry(m.workspace_id.clone()).or_default().push(m);
+    }
+
     let now = Utc::now();
 
-    for monitor in monitors {
-        let is_due = match &monitor.last_checked_at {
-            None => true,
-            Some(ts) => match ts.parse::<chrono::DateTime<Utc>>() {
-                Ok(last) => (now - last).num_seconds() >= monitor.interval_seconds,
-                Err(_) => true,
-            },
-        };
+    for (workspace_id, ws_monitors) in by_workspace {
+        // Lease window = 2x the longest monitor interval in this workspace (floored).
+        let max_interval = ws_monitors
+            .iter()
+            .map(|m| m.interval_seconds)
+            .max()
+            .unwrap_or(LEASE_MIN_SECONDS);
+        let lease_seconds = (max_interval * LEASE_MULTIPLIER).max(LEASE_MIN_SECONDS);
 
-        if !is_due { continue; }
+        // Claim/renew the lease BEFORE polling this workspace. Skip if not held.
+        if !claim_poll_lease(&client, &session, &workspace_id, lease_seconds).await {
+            info!("[ws-engine] Lease not held for workspace {workspace_id} — skipping");
+            continue;
+        }
 
-        let session_clone = session.clone();
-        let client_clone = client.clone();
-
-        tokio::spawn(async move {
-            let timeout = Duration::from_secs(monitor.timeout_seconds.max(1) as u64);
-            let config_str = monitor.config.as_ref().map(|v| v.to_string());
-            let outcome = dispatch_check(
-                &monitor.monitor_type,
-                &monitor.target,
-                timeout,
-                config_str.as_deref(),
-            ).await;
-
-            #[derive(serde::Serialize)]
-            struct RpcArgs {
-                p_id: String,
-                p_status: String,
-                p_last_checked_at: String,
-                p_response_ms: Option<i64>,
-                p_detail: Option<String>,
-            }
-
-            let args = RpcArgs {
-                p_id: monitor.id.clone(),
-                p_status: outcome.status.to_string(),
-                p_last_checked_at: Utc::now().to_rfc3339(),
-                p_response_ms: outcome.response_ms,
-                p_detail: outcome.detail,
+        for monitor in ws_monitors {
+            let is_due = match &monitor.last_checked_at {
+                None => true,
+                Some(ts) => match ts.parse::<chrono::DateTime<Utc>>() {
+                    Ok(last) => (now - last).num_seconds() >= monitor.interval_seconds,
+                    Err(_) => true,
+                },
             };
 
-            let result = client_clone
-                .post(format!("{}/rest/v1/rpc/record_workspace_monitor_result", session_clone.url))
-                .header("apikey", &session_clone.anon_key)
-                .header("Authorization", format!("Bearer {}", session_clone.access_token))
-                .header("Content-Type", "application/json")
-                .json(&args)
-                .send()
-                .await;
+            if !is_due { continue; }
 
-            match result {
-                Ok(r) if r.status().is_success() => {
-                    info!("[ws-engine] {} {} -> {}", monitor.monitor_type, monitor.target, outcome.status);
+            let session_clone = session.clone();
+            let client_clone = client.clone();
+
+            tokio::spawn(async move {
+                let timeout = Duration::from_secs(monitor.timeout_seconds.max(1) as u64);
+                let config_str = monitor.config.as_ref().map(|v| v.to_string());
+                let outcome = dispatch_check(
+                    &monitor.monitor_type,
+                    &monitor.target,
+                    timeout,
+                    config_str.as_deref(),
+                ).await;
+
+                #[derive(serde::Serialize)]
+                struct RpcArgs {
+                    p_id: String,
+                    p_status: String,
+                    p_last_checked_at: String,
+                    p_response_ms: Option<i64>,
+                    p_detail: Option<String>,
                 }
-                Ok(r) => { error!("[ws-engine] RPC returned {}", r.status()); }
-                Err(e) => { error!("[ws-engine] RPC request failed: {e}"); }
+
+                let args = RpcArgs {
+                    p_id: monitor.id.clone(),
+                    p_status: outcome.status.to_string(),
+                    p_last_checked_at: Utc::now().to_rfc3339(),
+                    p_response_ms: outcome.response_ms,
+                    p_detail: outcome.detail,
+                };
+
+                let result = client_clone
+                    .post(format!("{}/rest/v1/rpc/record_workspace_monitor_result", session_clone.url))
+                    .header("apikey", &session_clone.anon_key)
+                    .header("Authorization", format!("Bearer {}", session_clone.access_token))
+                    .header("Content-Type", "application/json")
+                    .json(&args)
+                    .send()
+                    .await;
+
+                match result {
+                    Ok(r) if r.status().is_success() => {
+                        info!("[ws-engine] {} {} -> {}", monitor.monitor_type, monitor.target, outcome.status);
+                    }
+                    Ok(r) => { error!("[ws-engine] RPC returned {}", r.status()); }
+                    Err(e) => { error!("[ws-engine] RPC request failed: {e}"); }
+                }
+            });
+        }
+    }
+
+    // Drain the notification outbox for any workspace this client can see + dispatch.
+    drain_workspace_outbox(app, &client, &session).await;
+}
+
+/// Claim/renew the poll lease for a workspace. Returns true iff this client holds it.
+async fn claim_poll_lease(
+    client: &reqwest::Client,
+    session: &crate::SupabaseSession,
+    workspace_id: &str,
+    lease_seconds: i64,
+) -> bool {
+    #[derive(serde::Serialize)]
+    struct Args<'a> {
+        p_workspace_id: &'a str,
+        p_lease_seconds: i64,
+    }
+    let resp = client
+        .post(format!("{}/rest/v1/rpc/claim_workspace_poll_lease", session.url))
+        .header("apikey", &session.anon_key)
+        .header("Authorization", format!("Bearer {}", session.access_token))
+        .header("Content-Type", "application/json")
+        .json(&Args { p_workspace_id: workspace_id, p_lease_seconds: lease_seconds })
+        .send()
+        .await;
+
+    match resp {
+        Ok(r) if r.status().is_success() => r.json::<bool>().await.unwrap_or(false),
+        Ok(r) => { error!("[ws-engine] lease RPC returned {}", r.status()); false }
+        Err(e) => { error!("[ws-engine] lease RPC failed: {e}"); false }
+    }
+}
+
+// ─── Notification outbox drain ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct OutboxRow {
+    id: String,
+    workspace_id: String,
+    monitor_id: String,
+    condition: String,
+    title: String,
+    body: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct WsAlertRuleRow {
+    id: String,
+    channel: String,
+    config: serde_json::Value,
+    vault_item_id: Option<String>,
+    threshold: Option<i64>,
+}
+
+/// Drain unsent outbox rows. For each, load matching admin-only alert rules, resolve
+/// the channel secret CLIENT-SIDE via the workspace vault, fire via notify.rs, then
+/// mark the row sent. Rules SELECT is admin-only — a non-admin client gets zero rows
+/// and simply leaves the outbox for an admin client to drain (acceptable A-hardened floor).
+async fn drain_workspace_outbox(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    session: &crate::SupabaseSession,
+) {
+    let resp = match client
+        .get(format!(
+            "{}/rest/v1/workspace_notification_outbox?sent_at=is.null&select=id,workspace_id,monitor_id,condition,title,body&order=created_at.asc&limit=50",
+            session.url
+        ))
+        .header("apikey", &session.anon_key)
+        .header("Authorization", format!("Bearer {}", session.access_token))
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => { error!("[ws-engine] outbox fetch failed: {e}"); return; }
+    };
+
+    let rows: Vec<OutboxRow> = match resp.json().await {
+        Ok(r) => r,
+        Err(e) => { error!("[ws-engine] outbox parse failed: {e}"); return; }
+    };
+
+    for row in rows {
+        // notify condition: 'up' recovery maps to the 'down' rule set (recovery of a down alert).
+        let rule_condition = if row.condition == "up" { "down" } else { row.condition.as_str() };
+
+        let rules_resp = client
+            .get(format!(
+                "{}/rest/v1/workspace_alert_rules?enabled=eq.true&workspace_id=eq.{}&condition=eq.{}&or=(monitor_id.is.null,monitor_id.eq.{})&select=id,channel,config,vault_item_id,threshold",
+                session.url, row.workspace_id, rule_condition, row.monitor_id
+            ))
+            .header("apikey", &session.anon_key)
+            .header("Authorization", format!("Bearer {}", session.access_token))
+            .header("Accept", "application/json")
+            .send()
+            .await;
+
+        let rules: Vec<WsAlertRuleRow> = match rules_resp {
+            Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
+            Ok(r) => {
+                // 403/empty for non-admin clients — leave the row for an admin to drain.
+                info!("[ws-engine] alert rules unreadable ({}) for ws {} — deferring outbox {}",
+                    r.status(), row.workspace_id, row.id);
+                continue;
             }
-        });
+            Err(e) => { error!("[ws-engine] rules fetch failed: {e}"); continue; }
+        };
+
+        // Track whether any rule was deferred (vault locked) so we don't prematurely
+        // mark the row sent. No applicable rules → still mark sent so it doesn't pile up.
+        let mut deferred = false;
+        for rule in &rules {
+            let secret = match &rule.vault_item_id {
+                Some(vid) => match crate::ws_vault::resolve_secret(app, &row.workspace_id, vid).await {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        error!("[ws-engine] secret resolve failed (rule {}): {e} — deferring", rule.id);
+                        // Vault likely locked; do NOT mark sent — retry on a later tick.
+                        deferred = true;
+                        continue;
+                    }
+                },
+                None => None,
+            };
+
+            let _ = rule.threshold; // threshold already enforced server-side at incident open
+            crate::notify::fire_ws_rule(
+                &rule.channel,
+                &rule.id,
+                &rule.config,
+                secret.as_deref(),
+                &row.title,
+                &row.body,
+            )
+            .await;
+        }
+
+        if deferred {
+            // At least one rule could not resolve its secret — leave the row unsent for retry.
+            continue;
+        }
+
+        // Mark sent (column-scoped UPDATE — only sent_at is granted to authenticated).
+        #[derive(serde::Serialize)]
+        struct SentPatch { sent_at: String }
+        let patch = client
+            .patch(format!(
+                "{}/rest/v1/workspace_notification_outbox?id=eq.{}",
+                session.url, row.id
+            ))
+            .header("apikey", &session.anon_key)
+            .header("Authorization", format!("Bearer {}", session.access_token))
+            .header("Content-Type", "application/json")
+            .header("Prefer", "return=minimal")
+            .json(&SentPatch { sent_at: Utc::now().to_rfc3339() })
+            .send()
+            .await;
+        match patch {
+            Ok(r) if r.status().is_success() => {}
+            Ok(r) => error!("[ws-engine] outbox mark-sent returned {}", r.status()),
+            Err(e) => error!("[ws-engine] outbox mark-sent failed: {e}"),
+        }
     }
 }
 

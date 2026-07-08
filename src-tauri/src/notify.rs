@@ -142,25 +142,89 @@ pub async fn notify_up(pool: &SqlitePool, monitor_id: &str, target: &str) {
 }
 
 async fn fire(rule: &AlertRule, title: &str, body: &str) {
-    match rule.channel.as_str() {
-        "discord"    => fire_discord(rule, title, body).await,
-        "email"      => fire_email(rule, title, body).await,
-        "webhook"    => fire_webhook(rule, title, body).await,
-        "telegram"   => fire_telegram(rule, title, body).await,
-        "slack"      => fire_slack(rule, title, body).await,
-        "teams"      => fire_teams(rule, title, body).await,
-        "pushover"   => fire_pushover(rule, title, body).await,
-        "ntfy"       => fire_ntfy(rule, title, body).await,
-        "gotify"     => fire_gotify(rule, title, body).await,
-        "whatsapp"   => fire_twilio(rule, title, body, true).await,
-        "sms"        => fire_twilio(rule, title, body, false).await,
-        "pagerduty"  => fire_pagerduty(rule, title, body).await,
-        "opsgenie"   => fire_opsgenie(rule, title, body).await,
-        "signal"     => fire_signal(rule, title, body).await,
-        "matrix"     => fire_matrix(rule, title, body).await,
-        "rocketchat" => fire_rocketchat(rule, title, body).await,
+    dispatch_channel(&rule.channel, &rule.id, &rule.config, title, body).await;
+}
+
+/// Channel-level dispatch shared by both the local (`AlertRule`) and workspace
+/// (`fire_ws_rule`) paths. `config` is the full JSON config string for the channel,
+/// `rule_id` is used only for log context.
+async fn dispatch_channel(channel: &str, rule_id: &str, config: &str, title: &str, body: &str) {
+    let r = AlertRule {
+        id: rule_id.to_string(),
+        channel: channel.to_string(),
+        config: config.to_string(),
+        threshold: None,
+    };
+    match channel {
+        "discord"    => fire_discord(&r, title, body).await,
+        "email"      => fire_email(&r, title, body).await,
+        "webhook"    => fire_webhook(&r, title, body).await,
+        "telegram"   => fire_telegram(&r, title, body).await,
+        "slack"      => fire_slack(&r, title, body).await,
+        "teams"      => fire_teams(&r, title, body).await,
+        "pushover"   => fire_pushover(&r, title, body).await,
+        "ntfy"       => fire_ntfy(&r, title, body).await,
+        "gotify"     => fire_gotify(&r, title, body).await,
+        "whatsapp"   => fire_twilio(&r, title, body, true).await,
+        "sms"        => fire_twilio(&r, title, body, false).await,
+        "pagerduty"  => fire_pagerduty(&r, title, body).await,
+        "opsgenie"   => fire_opsgenie(&r, title, body).await,
+        "signal"     => fire_signal(&r, title, body).await,
+        "matrix"     => fire_matrix(&r, title, body).await,
+        "rocketchat" => fire_rocketchat(&r, title, body).await,
         ch => error!("[notify] Unknown channel: {ch}"),
     }
+}
+
+// ─── Workspace alert rule dispatch (secret resolved client-side) ──────────────
+
+/// The secret JSON key each channel expects. The workspace alert rule stores ONLY
+/// non-secret routing in its `config`; the credential lives in the vault and is
+/// merged in here under this key right before firing. Channels whose only field is
+/// the secret-bearing URL (discord/slack/teams/rocketchat/webhook) inject `webhook_url`/`url`.
+fn channel_secret_key(channel: &str) -> Option<&'static str> {
+    match channel {
+        "discord" | "slack" | "teams" | "rocketchat" => Some("webhook_url"),
+        "webhook"   => Some("url"),
+        "email"     => Some("smtp_pass"),
+        "telegram"  => Some("bot_token"),
+        "pushover"  => Some("app_token"),
+        "gotify"    => Some("app_token"),
+        "whatsapp" | "sms" => Some("auth_token"),
+        "pagerduty" => Some("routing_key"),
+        "opsgenie"  => Some("api_key"),
+        "matrix"    => Some("access_token"),
+        // ntfy / signal have no required secret field in their config structs
+        "ntfy" | "signal" => None,
+        _ => None,
+    }
+}
+
+/// Fire a workspace alert rule. `config_json` is the NON-SECRET routing config from
+/// `workspace_alert_rules.config`; `secret` is the plaintext resolved CLIENT-SIDE via
+/// `ws_vault::resolve_secret`. The secret is merged into config under the channel's
+/// expected key, never persisted. Returns true on a dispatch attempt being made.
+pub async fn fire_ws_rule(
+    channel: &str,
+    rule_id: &str,
+    config_json: &serde_json::Value,
+    secret: Option<&str>,
+    title: &str,
+    body: &str,
+) {
+    let mut cfg = match config_json {
+        serde_json::Value::Object(_) => config_json.clone(),
+        _ => serde_json::json!({}),
+    };
+
+    if let (Some(key), Some(sec)) = (channel_secret_key(channel), secret) {
+        if let serde_json::Value::Object(map) = &mut cfg {
+            map.insert(key.to_string(), serde_json::Value::String(sec.to_string()));
+        }
+    }
+
+    let config_str = cfg.to_string();
+    dispatch_channel(channel, rule_id, &config_str, title, body).await;
 }
 
 // ─── Channel implementations ──────────────────────────────────────────────────
