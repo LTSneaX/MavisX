@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { usePlanStore } from '@/stores/plan-store'
+import { ENABLE_ENTERPRISE } from '@/config/features'
 import {
   Collapsible,
   CollapsibleContent,
@@ -37,11 +38,19 @@ import {
 export function NavGroup({ title, items }: NavGroupProps) {
   const { state, isMobile } = useSidebar()
   const href = useLocation({ select: (location) => location.href })
+  const plan = usePlanStore((s) => s.plan)
+  // Hide Enterprise-only nav items when the tier is disabled, so non-Enterprise
+  // users don't dead-end on a route they can't reach. Existing Enterprise
+  // accounts keep the item. The route + requireEnterprise() guard stay intact.
+  const visibleItems = items.filter(
+    (item) => ENABLE_ENTERPRISE || !item.enterprise || plan === 'enterprise'
+  )
+  if (visibleItems.length === 0) return null
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{title}</SidebarGroupLabel>
       <SidebarMenu>
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const key = `${item.title}-${item.url}`
 
           if (!item.items)
@@ -83,7 +92,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
   const plan = usePlanStore((s) => s.plan)
   const showProBadge = item.pro && plan === 'free'
-  const showEntBadge = item.enterprise && plan !== 'enterprise'
+  const showEntBadge = ENABLE_ENTERPRISE && item.enterprise && plan !== 'enterprise'
   return (
     <SidebarMenuItem>
       <SidebarMenuButton

@@ -23,18 +23,22 @@ A Tauri v2 desktop app that replaces Uptime Kuma, Termius, FileZilla, Portainer,
 | Agent Metrics Dashboard (SSH-based, live CPU/RAM/disk/net, multi-tab) | Pro | ✅ |
 | Docker Manager (SSH-based, containers + images, start/stop/logs) | Pro | ✅ |
 | Credential Vault (AES-256-GCM + Argon2id, multi-vault, per-vault master password) | Pro | ✅ |
-| Upgrade page (Free / Pro / Enterprise pricing) | — | ✅ |
+| Upgrade page (Free / Pro pricing) | — | ✅ |
 | Cloud auth (Supabase — accounts, invite flow, JWT plan tokens) | All | ✅ |
-| Enterprise workspace (invite, RBAC, shared monitors/connections) | Enterprise | ✅ |
-| Plan gate enforcement | Pro | 🔲 Next |
-| Billing (Lemon Squeezy — Pro/Enterprise checkout) | Pro/Enterprise | 🔲 Next |
+| Billing (Lemon Squeezy — Pro checkout + webhook) | Pro | ✅ |
+| Plan gate enforcement (`requirePro()` route guards + monitor limits) | Pro | ✅ |
+| Enterprise workspace (invite, RBAC, shared monitors/connections) | Enterprise | 🚧 Disabled |
 | Workspace monitor checking engine | Enterprise | 🔲 Next |
+
+> **Enterprise is temporarily disabled**, not removed. It sits behind the `ENABLE_ENTERPRISE = false` flag in `src/config/features.ts` — hidden from every purchase surface (Upgrade page, pricing cards, nav badge) while all Enterprise code (the `'enterprise'` plan type, `requireEnterprise()` route guard, `/cloud` workspaces, webhook plan mapping) stays live. Flip the flag to `true` to re-enable for launch — no re-plumbing required.
 
 ---
 
 ## Plans
 
-| | Free | Pro | Enterprise |
+Pricing is charged through **Lemon Squeezy** (merchant of record). **Free** and **Pro** are live; **Enterprise is planned but currently disabled** (see the note above) — its column below documents the intended shape, not a purchasable tier today.
+
+| | Free | Pro | Enterprise *(disabled)* |
 |---|---|---|---|
 | **Price** | $0 | $9/mo | $6/seat/mo |
 | Monitors | Up to 5 | Unlimited | Unlimited |
@@ -58,6 +62,79 @@ You supply your own credentials — MavisX fires to your endpoint, never stores 
 **Free (11):** Discord, Email/SMTP, Generic Webhook, Telegram, Slack, Microsoft Teams, Pushover, ntfy, Gotify, WhatsApp (Twilio), SMS (Twilio)
 
 **Pro (16):** + PagerDuty, OpsGenie, Signal (signal-cli), Matrix, Rocket.Chat
+
+---
+
+## Monetization & billing
+
+MavisX is monetized through **Lemon Squeezy** as the merchant of record (they handle payment, tax, and invoicing). Two live plans — **Free** and **Pro ($9/mo)**. This is wired end-to-end and confirmed working in Lemon Squeezy **test mode**.
+
+### Auth & entitlement model
+
+Auth is **Supabase Auth** (`src/lib/supabase.ts`) — *not* Clerk. (A stale `VITE_CLERK_PUBLISHABLE_KEY` reference was removed from `.env.example`; do not reintroduce it.)
+
+A user's plan is resolved by `resolvePlan()` in `src/stores/plan-store.ts`:
+
+1. **JWT first** — `parsePlanFromToken()` reads `app_metadata.plan` from the Supabase access token (`'pro'` / `'enterprise'` win; anything else is `'free'`).
+2. **DB fallback** — if the JWT carries no paid plan (e.g. the custom-access-token hook isn't enabled), it falls back to the `profiles.plan` column via a Supabase query.
+
+The resolved plan lives in the Zustand `usePlanStore`. Feature gating hangs off it (`src/lib/plan.ts`):
+
+- `requirePro()` — used in route `beforeLoad` guards (e.g. `/ssh`, `/docker`, `/vault`, `/agents`, `/files`, `/log-viewer`, `/web-viewer`, `/status-page`, `/alerts`); redirects free users to `/upgrade`.
+- `requireEnterprise()` — guards the `/cloud` workspace route (code intact even while Enterprise is flag-disabled).
+- `FREE_MONITOR_LIMIT = 5` — enforced in `src/features/monitors/index.tsx` (free users are blocked from adding beyond 5).
+
+### Checkout flow
+
+The Upgrade page (`src/features/upgrade/index.tsx`) builds a **Lemon Squeezy hosted checkout** URL from environment values and opens it in the system browser:
+
+```
+https://<store-slug>.lemonsqueezy.com/checkout/buy/<pro-variant-id>?checkout[custom][user_id]=<supabase-user-id>&checkout[email]=<email>
+```
+
+The signed-in **Supabase user id** is passed as `checkout[custom][user_id]` (email is prefilled when available). That custom key **must** stay exactly `user_id` under `checkout[custom]` — the webhook uses it to map the purchase back to the account. If the store/variant env vars or the user id are missing, checkout is skipped with a toast.
+
+### Webhook
+
+A **Supabase Edge Function** (`supabase/functions/lemon-webhook/index.ts`) receives Lemon Squeezy subscription/order events and updates the account's plan:
+
+1. Reads the **raw body once** and verifies the `X-Signature` header as an HMAC-SHA256 of that raw body, keyed by `LEMON_SIGNING_SECRET` (timing-safe, length-guarded, fail-closed if the secret is unset).
+2. Only after a valid signature does it parse the JSON. The event name and subscription **status** come from the signed body (never the unsigned `X-Event-Name` header).
+3. Validates `meta.custom_data.user_id` as a real UUID.
+4. Derives the target plan from subscription **status** when present (`active`/`on_trial`/`paid` → paid; `cancelled`/`expired`/`past_due`/`unpaid` → free), which makes replays and out-of-order deliveries converge; falls back to an event-name switch for one-shot events like `order_created`.
+5. Updates `public.profiles` (`plan` plus Lemon customer/subscription/variant ids) via the `service_role` client, then writes `app_metadata.plan` so the next JWT refresh carries the plan. Unactionable events are acked with `200` so Lemon Squeezy stops retrying.
+
+Paid variants currently all map to `pro` via a `?? 'pro'` fallback (`PLAN_MAP` is intentionally empty); numeric variant IDs get added there when Enterprise re-enables.
+
+### Environment variables
+
+**Public — frontend `.env`** (compiled into the app; safe to expose):
+
+| Var | Purpose |
+|---|---|
+| `VITE_LEMON_STORE` | Lemon Squeezy store slug, e.g. `<your-store-slug>` |
+| `VITE_LEMON_PRO_VARIANT_ID` | Variant UUID for the Pro plan, e.g. `<pro-variant-id>` |
+
+**Secret — Supabase Edge Function secret** (never in the frontend, never committed):
+
+| Var | Purpose |
+|---|---|
+| `LEMON_SIGNING_SECRET` | Webhook signing secret from Lemon Squeezy; must match the store's webhook config exactly |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Auto-injected into the Edge Function runtime — do not set manually |
+
+> `LEMON_SIGNING_SECRET` is a **secret**. Set it as an Edge Function secret (Supabase Dashboard → Edge Functions → Secrets, or `supabase secrets set`). It must never appear in frontend `.env`, client bundles, or version control.
+
+### Billing / deployment notes
+
+Gotchas that make first-time setup painless:
+
+- **Deploy the Edge Function with JWT verification OFF.** Lemon Squeezy is an unauthenticated caller — its auth is the HMAC `X-Signature`, not a Supabase JWT. With JWT enforcement on, every webhook is rejected before your handler runs. Verify with an unauthenticated `curl` after deploy.
+- **The deployed function slug must match the Lemon Squeezy webhook Callback URL** (`.../functions/v1/lemon-webhook`). A mismatch = silent 404s on delivery.
+- **`service_role` needs table privileges on `public.profiles`.** If plan updates silently fail, grant them:
+  ```sql
+  GRANT SELECT, UPDATE ON public.profiles TO service_role;
+  ```
+- Keep the `LEMON_SIGNING_SECRET` value identical on both sides (Lemon Squeezy webhook settings ↔ Edge Function secret) or every request 401s.
 
 ---
 
@@ -158,7 +235,8 @@ pnpm tauri:build
 
 See [`BLUEPRINT.md`](../BLUEPRINT.md) for the full module specs.
 
-**Immediate next:** Workspace monitor checking engine → Plan gate enforcement → Billing (Lemon Squeezy) → Public launch.
+**Done:** Lemon Squeezy billing (Free / Pro, test mode) + plan-gate enforcement.
+**Immediate next:** Workspace monitor checking engine → re-enable Enterprise (`ENABLE_ENTERPRISE = true`) → Public launch.
 
 ---
 

@@ -1,7 +1,32 @@
 import { Check, Zap, Shield, Server, GitBranch, Cpu, Wifi, Building2, Users } from 'lucide-react'
+import { open as shellOpen } from '@tauri-apps/plugin-shell'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { ENABLE_ENTERPRISE } from '@/config/features'
+import { useAuthStore } from '@/stores/auth-store'
+
+/**
+ * Build the Lemon Squeezy hosted checkout URL for the Pro variant.
+ *
+ * The store slug and variant UUID come from env (public values). The signed-in
+ * Supabase user id is passed as `checkout[custom][user_id]` so the
+ * `lemon-webhook` function can map the purchase back to the account — the key
+ * MUST stay exactly `user_id` under `checkout[custom]`. Email is prefilled when
+ * available. Returns null if config or the user id is missing.
+ */
+function buildProCheckoutUrl(userId: string, email?: string | null): string | null {
+  const store = import.meta.env.VITE_LEMON_STORE as string | undefined
+  const variant = import.meta.env.VITE_LEMON_PRO_VARIANT_ID as string | undefined
+  if (!store || !variant || !userId) return null
+
+  const params = new URLSearchParams()
+  params.set('checkout[custom][user_id]', userId)
+  if (email) params.set('checkout[email]', email)
+
+  return `https://${store}.lemonsqueezy.com/checkout/buy/${variant}?${params.toString()}`
+}
 
 const FREE_FEATURES = [
   'Up to 5 monitors',
@@ -88,7 +113,7 @@ const TIERS: Tier[] = [
   },
 ]
 
-function TierCard({ tier }: { tier: Tier }) {
+function TierCard({ tier, onCta }: { tier: Tier; onCta?: () => void }) {
   return (
     <div
       className={cn(
@@ -149,6 +174,7 @@ function TierCard({ tier }: { tier: Tier }) {
         variant={tier.name === 'Enterprise' ? 'outline' : 'default'}
         className={cn('mt-8 w-full', tier.ctaClass)}
         disabled={tier.disabled}
+        onClick={onCta}
       >
         {tier.highlight && <Zap className='mr-2 h-4 w-4' />}
         {tier.name === 'Enterprise' && <Building2 className='mr-2 h-4 w-4' />}
@@ -170,6 +196,32 @@ function TierCard({ tier }: { tier: Tier }) {
 }
 
 export function UpgradePage() {
+  const user = useAuthStore((s) => s.auth.user)
+
+  const handleProUpgrade = () => {
+    if (!user?.id) {
+      toast.error('Please sign in before upgrading to Pro.')
+      return
+    }
+    const url = buildProCheckoutUrl(user.id, user.email)
+    if (!url) {
+      toast.error('Checkout is not configured. Missing Lemon Squeezy store settings.')
+      return
+    }
+    shellOpen(url).catch(() => {
+      toast.error('Could not open the checkout page. Please try again.')
+    })
+  }
+
+  // Enterprise is hidden from purchase surfaces unless the feature flag is on.
+  // All Enterprise code (plan type, route guards, webhook mapping) stays intact.
+  const visibleTiers = ENABLE_ENTERPRISE
+    ? TIERS
+    : TIERS.filter((t) => t.name !== 'Enterprise')
+  const visibleHighlights = ENABLE_ENTERPRISE
+    ? HIGHLIGHTS
+    : HIGHLIGHTS.filter((h) => h.label !== 'Team Workspaces')
+
   return (
     <div className='min-h-screen bg-background px-6 py-12'>
       {/* Header */}
@@ -187,36 +239,49 @@ export function UpgradePage() {
       </div>
 
       {/* Pricing cards */}
-      <div className='mx-auto max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-5 mb-16'>
-        {TIERS.map((tier) => (
-          <TierCard key={tier.name} tier={tier} />
+      <div
+        className={cn(
+          'mx-auto max-w-4xl grid grid-cols-1 gap-5 mb-16',
+          ENABLE_ENTERPRISE ? 'md:grid-cols-3' : 'md:grid-cols-2'
+        )}
+      >
+        {visibleTiers.map((tier) => (
+          <TierCard
+            key={tier.name}
+            tier={tier}
+            onCta={tier.name === 'Pro' ? handleProUpgrade : undefined}
+          />
         ))}
       </div>
 
       {/* Enterprise callout */}
-      <div className='mx-auto max-w-4xl mb-16'>
-        <div className='rounded-xl border border-blue-500/20 bg-blue-950/10 p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4'>
-          <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600/15'>
-            <Building2 className='h-5 w-5 text-blue-400' />
+      {ENABLE_ENTERPRISE && (
+        <div className='mx-auto max-w-4xl mb-16'>
+          <div className='rounded-xl border border-blue-500/20 bg-blue-950/10 p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4'>
+            <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600/15'>
+              <Building2 className='h-5 w-5 text-blue-400' />
+            </div>
+            <div className='flex-1'>
+              <p className='font-semibold text-sm'>How Enterprise workspaces work</p>
+              <p className='text-sm text-muted-foreground mt-0.5'>
+                Create a workspace and invite your team. Each seat gets full Pro access scoped to that workspace — shared monitors, connections, Docker hosts, and alert rules. Billing is per active seat per month.
+              </p>
+            </div>
+            <Button variant='outline' className='shrink-0 border-blue-500/40 text-blue-300 hover:bg-blue-600/10'>
+              <Users className='mr-2 h-4 w-4' />
+              Learn more
+            </Button>
           </div>
-          <div className='flex-1'>
-            <p className='font-semibold text-sm'>How Enterprise workspaces work</p>
-            <p className='text-sm text-muted-foreground mt-0.5'>
-              Create a workspace and invite your team. Each seat gets full Pro access scoped to that workspace — shared monitors, connections, Docker hosts, and alert rules. Billing is per active seat per month.
-            </p>
-          </div>
-          <Button variant='outline' className='shrink-0 border-blue-500/40 text-blue-300 hover:bg-blue-600/10'>
-            <Users className='mr-2 h-4 w-4' />
-            Learn more
-          </Button>
         </div>
-      </div>
+      )}
 
       {/* Highlights grid */}
       <div className='mx-auto max-w-4xl'>
-        <h2 className='text-xl font-semibold mb-6 text-center'>What you unlock on Pro & Enterprise</h2>
+        <h2 className='text-xl font-semibold mb-6 text-center'>
+          {ENABLE_ENTERPRISE ? 'What you unlock on Pro & Enterprise' : 'What you unlock on Pro'}
+        </h2>
         <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
-          {HIGHLIGHTS.map(({ icon: Icon, label, desc }) => (
+          {visibleHighlights.map(({ icon: Icon, label, desc }) => (
             <div key={label} className='rounded-lg border border-border bg-card p-4 flex gap-3'>
               <div className='mt-0.5 shrink-0 rounded-md bg-violet-600/10 p-2'>
                 <Icon className='h-4 w-4 text-violet-400' />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { vault, type VaultMeta, type VaultItemMeta, VAULT_ITEM_TYPE_LABELS } from '@/lib/vault'
+import { ENABLE_ENTERPRISE } from '@/config/features'
 import { Header } from '@/components/layout/header'
 import { Main } from '@/components/layout/main'
 import { ProfileDropdown } from '@/components/profile-dropdown'
@@ -436,7 +437,7 @@ export function VaultPage() {
         {atLimit && vaults.length > 0 && (
           <div className='rounded-lg border border-violet-500/20 bg-violet-950/10 px-4 py-3 flex items-center justify-between'>
             <p className='text-sm text-violet-300'>
-              You've reached your plan limit of {vaultLimit} vault{vaultLimit !== 1 ? 's' : ''}. Upgrade to Pro for up to 3, or Enterprise for up to 10.
+              You've reached your plan limit of {vaultLimit} vault{vaultLimit !== 1 ? 's' : ''}. Upgrade to Pro for up to 3{ENABLE_ENTERPRISE ? ', or Enterprise for up to 10' : ''}.
             </p>
             <Button size='sm' className='shrink-0 ml-4 bg-violet-600 hover:bg-violet-700 text-white'>
               Upgrade
