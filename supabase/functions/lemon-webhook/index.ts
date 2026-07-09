@@ -11,15 +11,17 @@ import { Buffer } from 'node:buffer'
 // Lemon Squeezy is an unauthenticated caller; auth is the HMAC signature below,
 // NOT a Supabase JWT. Verify with an unauthenticated curl after deploy.
 
-// Variant → plan map. Any paid variant NOT listed here falls through to 'pro'
-// via the `?? 'pro'` fallback below (single Pro tier is the historical default).
+// Variant → plan map. Both live variants are pinned explicitly; any other paid
+// variant still falls through to 'pro' via the `?? 'pro'` fallback below
+// (belt-and-suspenders — an unknown paid variant should never mint enterprise).
 //
-// Enterprise ($29/mo recurring) — real Lemon Squeezy variant_id, live in the LS
-// dashboard. A subscription on this variant maps the owner's profile to
-// 'enterprise', which is the server-side trust anchor for workspace entitlement
-// (see migration 015). Any other paid variant still falls through to 'pro'.
+// Pro ($9/mo)         — variant 1883298.
+// Enterprise ($29/mo) — variant 1888046. This maps the owner's profile to
+// 'enterprise', the server-side trust anchor for workspace entitlement (mig 015).
+const PRO_VARIANT_ID = 1883298
 const ENTERPRISE_VARIANT_ID = 1888046
 const PLAN_MAP: Record<number, 'pro' | 'enterprise'> = {
+  [PRO_VARIANT_ID]: 'pro',
   [ENTERPRISE_VARIANT_ID]: 'enterprise',
 }
 
