@@ -344,7 +344,7 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
 const WORKSPACE_LIMITS: Record<string, number> = {
   free: 0,
   pro: 3,
-  enterprise: 10,
+  enterprise: Infinity,
 }
 
 export function WorkspacePage() {
@@ -390,7 +390,9 @@ export function WorkspacePage() {
                 <Plus className='h-4 w-4 mr-1' /> New workspace
               </Button>
               <p className='text-[11px] text-muted-foreground'>
-                {workspaces.length} / {workspaceLimit} workspaces
+                {Number.isFinite(workspaceLimit)
+                  ? `${workspaces.length} / ${workspaceLimit} workspaces`
+                  : `${workspaces.length} workspaces · unlimited`}
               </p>
             </div>
           )}

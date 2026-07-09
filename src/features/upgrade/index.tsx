@@ -28,6 +28,27 @@ function buildProCheckoutUrl(userId: string, email?: string | null): string | nu
   return `https://${store}.lemonsqueezy.com/checkout/buy/${variant}?${params.toString()}`
 }
 
+/**
+ * Build the Lemon Squeezy hosted checkout URL for the Enterprise variant.
+ *
+ * Mirrors {@link buildProCheckoutUrl} exactly — same store slug, same
+ * `checkout[custom][user_id]` mapping (the key MUST stay `user_id` under
+ * `checkout[custom]` for the `lemon-webhook` function), same email prefill —
+ * differing only in the variant read from `VITE_LEMON_ENTERPRISE_VARIANT_ID`.
+ * Returns null if config or the user id is missing.
+ */
+function buildEnterpriseCheckoutUrl(userId: string, email?: string | null): string | null {
+  const store = import.meta.env.VITE_LEMON_STORE as string | undefined
+  const variant = import.meta.env.VITE_LEMON_ENTERPRISE_VARIANT_ID as string | undefined
+  if (!store || !variant || !userId) return null
+
+  const params = new URLSearchParams()
+  params.set('checkout[custom][user_id]', userId)
+  if (email) params.set('checkout[email]', email)
+
+  return `https://${store}.lemonsqueezy.com/checkout/buy/${variant}?${params.toString()}`
+}
+
 const FREE_FEATURES = [
   'Up to 5 monitors',
   '1 SSH connection',
@@ -49,8 +70,8 @@ const PRO_FEATURES = [
 
 const ENTERPRISE_FEATURES = [
   'Everything in Pro',
-  'Team workspaces',
-  'Per-seat user management',
+  'Unlimited shared workspaces',
+  'Unlimited team members',
   'Role-based access control',
   'Shared connections & monitors',
   'Workspace audit logs',
@@ -64,7 +85,7 @@ const HIGHLIGHTS = [
   { icon: GitBranch, label: 'Docker Management',  desc: 'Manage containers and images over SSH' },
   { icon: Wifi,      label: 'Faster Polling',     desc: 'Down to 30-second check intervals' },
   { icon: Shield,    label: 'Alert Routing',      desc: 'Webhooks, email, and custom integrations' },
-  { icon: Users,     label: 'Team Workspaces',    desc: 'Invite teammates with per-seat licensing' },
+  { icon: Users,     label: 'Team Workspaces',    desc: 'Unlimited workspaces and members, one flat price' },
 ]
 
 type Tier = {
@@ -103,11 +124,11 @@ const TIERS: Tier[] = [
   },
   {
     name: 'Enterprise',
-    price: '$6',
-    sub: '/seat/month',
+    price: '$29',
+    sub: '/month',
     badge: 'TEAMS',
     features: ENTERPRISE_FEATURES,
-    cta: 'Contact Sales',
+    cta: 'Upgrade to Enterprise',
     ctaClass: 'border-blue-500/40 text-blue-300 hover:bg-blue-600/10',
     cardClass: 'border-blue-500/20 bg-blue-950/10',
   },
@@ -148,7 +169,7 @@ function TierCard({ tier, onCta }: { tier: Tier; onCta?: () => void }) {
           <p className='text-muted-foreground mb-1 text-sm'>{tier.sub}</p>
         </div>
         {tier.name === 'Enterprise' && (
-          <p className='text-xs text-muted-foreground mt-1'>Minimum 3 seats</p>
+          <p className='text-xs text-muted-foreground mt-1'>Per owner · Unlimited workspaces & members</p>
         )}
       </div>
 
@@ -188,7 +209,7 @@ function TierCard({ tier, onCta }: { tier: Tier; onCta?: () => void }) {
       )}
       {tier.name === 'Enterprise' && (
         <p className='text-center text-xs text-muted-foreground mt-3'>
-          Per-seat · Billed monthly or annually
+          One flat price · Cancel anytime
         </p>
       )}
     </div>
@@ -204,6 +225,21 @@ export function UpgradePage() {
       return
     }
     const url = buildProCheckoutUrl(user.id, user.email)
+    if (!url) {
+      toast.error('Checkout is not configured. Missing Lemon Squeezy store settings.')
+      return
+    }
+    shellOpen(url).catch(() => {
+      toast.error('Could not open the checkout page. Please try again.')
+    })
+  }
+
+  const handleEnterpriseUpgrade = () => {
+    if (!user?.id) {
+      toast.error('Please sign in before upgrading to Enterprise.')
+      return
+    }
+    const url = buildEnterpriseCheckoutUrl(user.id, user.email)
     if (!url) {
       toast.error('Checkout is not configured. Missing Lemon Squeezy store settings.')
       return
@@ -249,7 +285,13 @@ export function UpgradePage() {
           <TierCard
             key={tier.name}
             tier={tier}
-            onCta={tier.name === 'Pro' ? handleProUpgrade : undefined}
+            onCta={
+              tier.name === 'Pro'
+                ? handleProUpgrade
+                : tier.name === 'Enterprise'
+                ? handleEnterpriseUpgrade
+                : undefined
+            }
           />
         ))}
       </div>
@@ -264,7 +306,7 @@ export function UpgradePage() {
             <div className='flex-1'>
               <p className='font-semibold text-sm'>How Enterprise workspaces work</p>
               <p className='text-sm text-muted-foreground mt-0.5'>
-                Create a workspace and invite your team. Each seat gets full Pro access scoped to that workspace — shared monitors, connections, Docker hosts, and alert rules. Billing is per active seat per month.
+                Create as many workspaces as you need and invite unlimited teammates. Everyone gets full Pro access scoped to the workspace — shared monitors, connections, Docker hosts, and alert rules. One flat price per owner, no per-seat billing.
               </p>
             </div>
             <Button variant='outline' className='shrink-0 border-blue-500/40 text-blue-300 hover:bg-blue-600/10'>
