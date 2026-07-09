@@ -58,6 +58,18 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auto-provided; no secret to add
+          # --- Lemon Squeezy checkout config (PUBLIC, baked into the client bundle) ---
+          # These reach `vite build` (run by tauri-action's beforeBuildCommand) as
+          # VITE_-prefixed env vars. The repo .env is gitignored, so WITHOUT this block
+          # both the Pro AND Enterprise checkout buttons ship broken (import.meta.env.*
+          # undefined -> buildProCheckoutUrl / buildEnterpriseCheckoutUrl return null).
+          # Values are non-secret (safe to expose). Defaults below are the current
+          # TEST-mode values; override via GitHub repo Variables (Settings → Secrets and
+          # variables → Actions → Variables) for the test→live swap — a one-line change,
+          # no code edit needed.
+          VITE_LEMON_STORE: ${{ vars.VITE_LEMON_STORE || 'mavisxop' }}
+          VITE_LEMON_PRO_VARIANT_ID: ${{ vars.VITE_LEMON_PRO_VARIANT_ID || '354fa076-af62-4d13-90b0-f1413b00cbcb' }}
+          VITE_LEMON_ENTERPRISE_VARIANT_ID: ${{ vars.VITE_LEMON_ENTERPRISE_VARIANT_ID || '1888046' }}
           # --- Code signing (LEFT UNSET for now — SneaX's decision) ---
           # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
