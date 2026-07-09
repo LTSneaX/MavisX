@@ -179,6 +179,19 @@ CREATE POLICY "workspace owners can update"
     AND (SELECT private.workspace_entitled_write(id))
   );
 
+-- Vera HIGH #1 remediation: grace_until must be service_role-only.
+-- 003_workspaces.sql:115 granted table-level INSERT/UPDATE on public.workspaces to
+-- `authenticated`, which silently covers the new grace_until column — an enterprise
+-- owner could PATCH grace_until far into the future, then cancel, and the webhook's
+-- `WHERE grace_until IS NULL` guard would never overwrite it → indefinite free
+-- read + monitoring. Column-scope the authenticated grants so authenticated can
+-- only ever write the columns the design intends (name on rename; id/name/owner_id
+-- on create). grace_until (and created_at) are left writable ONLY by service_role
+-- (the webhook). Mirrors the 014:176 `GRANT UPDATE (sent_at)` column-scope precedent.
+REVOKE INSERT, UPDATE ON public.workspaces FROM authenticated;
+GRANT  INSERT (id, name, owner_id) ON public.workspaces TO authenticated;
+GRANT  UPDATE (name)               ON public.workspaces TO authenticated;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. Non-helper patch (3/4): record_workspace_monitor_result.
 --    Re-created verbatim from 014 with ONE added gate: reject when the workspace
@@ -318,3 +331,39 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public.activate_my_invites() TO authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 9. Vera HIGH #2 remediation: close the un-invited cross-tenant self-join.
+--    The 012 workspace_members INSERT policy allowed `user_id = auth.uid()`
+--    UNCONDITIONALLY — any authenticated user could insert themselves as an
+--    active admin into ANY workspace_id, which (now that 015 rests entitlement on
+--    membership) is full read+write into another tenant's paid workspace.
+--    Tightened to exactly the two self-insert flows that actually exist in the
+--    client (traced):
+--      (a) admin/owner creating a PENDING invite for someone else (user_id NULL);
+--      (b) the owner self-seeding their OWN membership row at workspace creation.
+--    There is deliberately NO "accept invite via self-INSERT" branch: invite
+--    acceptance goes exclusively through activate_my_invites() (SECURITY DEFINER
+--    UPDATE of the existing pending row) — route.tsx calls the RPC on login; no
+--    direct client INSERT-on-accept path exists. Kept as tight as the real flows
+--    allow (Vera's optional 3rd branch omitted by design; re-add if a direct
+--    accept-INSERT path is ever introduced).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+DROP POLICY IF EXISTS "workspace_members_insert" ON public.workspace_members;
+
+CREATE POLICY "workspace_members_insert"
+  ON public.workspace_members FOR INSERT TO authenticated
+  WITH CHECK (
+    -- (a) Admin/owner creating a pending invite for someone else (user_id NULL).
+    (user_id IS NULL AND (SELECT private.is_workspace_admin(workspace_id)))
+    -- (b) Owner self-seeding their own membership row for a workspace they own.
+    OR (
+      user_id = (SELECT auth.uid())
+      AND EXISTS (
+        SELECT 1 FROM public.workspaces w
+        WHERE w.id = workspace_id
+          AND w.owner_id = (SELECT auth.uid())
+      )
+    )
+  );
