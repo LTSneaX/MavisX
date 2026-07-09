@@ -5,6 +5,25 @@ export interface Workspace {
   name: string
   owner_id: string
   created_at: string
+  // Nullable Enterprise grace stamp, set/cleared ONLY by the lemon-webhook
+  // (service_role). Present on `select('*')`. Drives read-only / locked UX.
+  // The server (RLS) is the security truth; this is presentation only.
+  grace_until?: string | null
+}
+
+export type WorkspaceEntitlement = 'active' | 'grace' | 'locked'
+
+/**
+ * Client-side entitlement state for UX only — RLS is the real boundary.
+ *   grace_until null                → active  (owner enterprise; full access)
+ *   grace_until set, now < it       → grace   (read-only; owner's sub lapsed)
+ *   grace_until set, now >= it       → locked  (only the owner still sees the row)
+ */
+export function workspaceEntitlement(
+  ws: Pick<Workspace, 'grace_until'>
+): WorkspaceEntitlement {
+  if (!ws.grace_until) return 'active'
+  return Date.now() < new Date(ws.grace_until).getTime() ? 'grace' : 'locked'
 }
 
 export interface WorkspaceMember {

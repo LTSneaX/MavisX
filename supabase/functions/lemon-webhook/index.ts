@@ -11,12 +11,17 @@ import { Buffer } from 'node:buffer'
 // Lemon Squeezy is an unauthenticated caller; auth is the HMAC signature below,
 // NOT a Supabase JWT. Verify with an unauthenticated curl after deploy.
 
-// Single Pro tier for now, so the map is intentionally empty and every paid
-// variant falls through to 'pro' via the `?? 'pro'` fallback below.
-// TODO(Enterprise): add numeric variant IDs here when Enterprise re-enables, e.g.
-//   123456: 'pro',
-//   789012: 'enterprise',
-const PLAN_MAP: Record<number, 'pro' | 'enterprise'> = {}
+// Variant → plan map. Any paid variant NOT listed here falls through to 'pro'
+// via the `?? 'pro'` fallback below (single Pro tier is the historical default).
+//
+// Enterprise ($29/mo recurring) — real Lemon Squeezy variant_id, live in the LS
+// dashboard. A subscription on this variant maps the owner's profile to
+// 'enterprise', which is the server-side trust anchor for workspace entitlement
+// (see migration 015). Any other paid variant still falls through to 'pro'.
+const ENTERPRISE_VARIANT_ID = 1888046
+const PLAN_MAP: Record<number, 'pro' | 'enterprise'> = {
+  [ENTERPRISE_VARIANT_ID]: 'enterprise',
+}
 
 // Statuses Lemon Squeezy reports on a subscription. Deriving plan from status
 // (rather than the event name) makes replays / out-of-order deliveries converge
@@ -170,6 +175,44 @@ Deno.serve(async (req: Request) => {
     if (adminError) {
       console.error('[lemon-webhook] app_metadata update failed', adminError)
       return new Response('Internal error', { status: 500 })
+    }
+
+    // 12 — Enterprise grace-window maintenance on the owner's workspaces.
+    // Entitlement is enforced server-side by RLS off the workspace OWNER's plan
+    // (migration 015). `grace_until` is writable ONLY here (service_role) — never
+    // by any authenticated policy. Both branches are idempotent and replay-safe:
+    //   • TO enterprise (subscribe/resume/upgrade) → clear grace on the owner's
+    //     workspaces (only the ones currently in grace) → back to ACTIVE.
+    //   • AWAY from enterprise (downgrade/cancel/expire) → stamp a 14-day
+    //     read-only grace window on the owner's workspaces that are not already
+    //     in grace. The `grace_until IS NULL` guard means a replayed/duplicate
+    //     lapse event never resets or extends an in-flight window.
+    // A former-Enterprise owner is the only user who can hold workspaces (creation
+    // requires enterprise), so for Pro/Free events this simply affects 0 rows.
+    const GRACE_DAYS = 14
+    if (targetPlan === 'enterprise') {
+      const { error: graceError } = await supabase
+        .from('workspaces')
+        .update({ grace_until: null })
+        .eq('owner_id', userId)
+        .not('grace_until', 'is', null)
+      if (graceError) {
+        console.error('[lemon-webhook] clearing grace_until failed', graceError)
+        return new Response('Internal error', { status: 500 })
+      }
+    } else {
+      const graceUntil = new Date(
+        Date.now() + GRACE_DAYS * 24 * 60 * 60 * 1000
+      ).toISOString()
+      const { error: graceError } = await supabase
+        .from('workspaces')
+        .update({ grace_until: graceUntil })
+        .eq('owner_id', userId)
+        .is('grace_until', null)
+      if (graceError) {
+        console.error('[lemon-webhook] stamping grace_until failed', graceError)
+        return new Response('Internal error', { status: 500 })
+      }
     }
   } catch (err) {
     // 7 — never leak internals; log detail server-side, generic message to the wire.

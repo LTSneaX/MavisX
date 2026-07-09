@@ -18,6 +18,7 @@ import {
 import { useWorkspaceStore } from '@/stores/workspace-store'
 import { usePlanStore } from '@/stores/plan-store'
 import { useWorkspaceWindowStore } from '@/stores/workspace-window-store'
+import { workspaceEntitlement } from '@/lib/workspace'
 import { db } from '@/lib/db'
 
 export function TeamSwitcher() {
@@ -57,7 +58,9 @@ export function TeamSwitcher() {
             {workspaces.length > 0 ? (
               <>
                 <DropdownMenuLabel className='text-xs text-muted-foreground'>Workspaces</DropdownMenuLabel>
-                {workspaces.map((ws) => (
+                {workspaces.map((ws) => {
+                  const entitlement = workspaceEntitlement(ws)
+                  return (
                   <DropdownMenuItem
                     key={ws.id}
                     onClick={() => { setActiveWorkspace(ws); openWorkspace(ws) }}
@@ -67,11 +70,18 @@ export function TeamSwitcher() {
                       {ws.name.slice(0, 2).toUpperCase()}
                     </div>
                     <span className='flex-1 truncate'>{ws.name}</span>
-                    {activeWorkspace?.id === ws.id && (
+                    {entitlement === 'grace' && (
+                      <span className='text-[10px] font-semibold text-amber-400'>Read-only</span>
+                    )}
+                    {entitlement === 'locked' && (
+                      <span className='text-[10px] font-semibold text-red-400'>Locked</span>
+                    )}
+                    {entitlement === 'active' && activeWorkspace?.id === ws.id && (
                       <span className='text-[10px] text-violet-400'>Active</span>
                     )}
                   </DropdownMenuItem>
-                ))}
+                  )
+                })}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild className='gap-2 p-2'>
                   <Link to='/cloud'>
