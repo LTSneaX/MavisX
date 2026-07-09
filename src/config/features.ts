@@ -20,4 +20,4 @@
  * To re-enable Enterprise for launch/sale: set this to `true`. That is the only
  * change required.
  */
-export const ENABLE_ENTERPRISE = false
+export const ENABLE_ENTERPRISE = true
