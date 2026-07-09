@@ -69,7 +69,7 @@ jobs:
           # no code edit needed.
           VITE_LEMON_STORE: ${{ vars.VITE_LEMON_STORE || 'mavisxop' }}
           VITE_LEMON_PRO_VARIANT_ID: ${{ vars.VITE_LEMON_PRO_VARIANT_ID || '354fa076-af62-4d13-90b0-f1413b00cbcb' }}
-          VITE_LEMON_ENTERPRISE_VARIANT_ID: ${{ vars.VITE_LEMON_ENTERPRISE_VARIANT_ID || '1888046' }}
+          VITE_LEMON_ENTERPRISE_VARIANT_ID: ${{ vars.VITE_LEMON_ENTERPRISE_VARIANT_ID || '478546bb-cd97-43c4-a20b-8eb8663ebdb5' }}
           # --- Code signing (LEFT UNSET for now — SneaX's decision) ---
           # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
