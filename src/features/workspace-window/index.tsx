@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { X, Activity, Plug, Users, LayoutDashboard, Crown, Shield, User, ShieldCheck } from 'lucide-react'
+import { X, Activity, Plug, Users, LayoutDashboard, Crown, Shield, User, ShieldCheck, AlertTriangle, Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { workspaceEntitlement } from '@/lib/workspace'
 import { useWorkspaceWindowStore } from '@/stores/workspace-window-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -41,8 +43,15 @@ export function WorkspaceOverlay() {
   })
 
   const isOwner = workspace?.owner_id === auth.user?.id
-  const isAdmin = isOwner || myMember?.role === 'admin'
+  const baseAdmin = isOwner || myMember?.role === 'admin'
   const myRole: 'owner' | 'admin' | 'member' = isOwner ? 'owner' : (myMember?.role as 'admin' | 'member') ?? 'member'
+
+  // Entitlement drives read-only UX. RLS is the real boundary; this hides the
+  // write affordances so a lapsed member never fires a mutation that RLS rejects.
+  const entitlement = workspace ? workspaceEntitlement(workspace) : 'active'
+  const readOnly = entitlement !== 'active'
+  // In grace or locked, nobody gets admin write UI (create/edit/invite hidden).
+  const isAdmin = baseAdmin && !readOnly
 
   // Close on Escape
   useEffect(() => {
@@ -79,6 +88,15 @@ export function WorkspaceOverlay() {
           <X className='h-4 w-4' />
         </Button>
       </div>
+
+      {/* Entitlement banner — owner's Enterprise subscription lapsed */}
+      {entitlement !== 'active' && (
+        <EntitlementBanner
+          entitlement={entitlement}
+          isOwner={isOwner}
+          graceUntil={workspace.grace_until ?? null}
+        />
+      )}
 
       {/* Tab bar */}
       <div className='flex items-center gap-1 px-4 border-b border-border/40 bg-card/50 shrink-0'>
@@ -117,6 +135,48 @@ export function WorkspaceOverlay() {
           <MembersTab workspaceId={workspace.id} ownerId={workspace.owner_id} isAdmin={isAdmin} />
         )}
       </div>
+    </div>
+  )
+}
+
+function EntitlementBanner({
+  entitlement,
+  isOwner,
+  graceUntil,
+}: {
+  entitlement: 'grace' | 'locked'
+  isOwner: boolean
+  graceUntil: string | null
+}) {
+  if (entitlement === 'grace') {
+    const until = graceUntil ? new Date(graceUntil).toLocaleDateString() : null
+    return (
+      <div className='flex items-center gap-2 px-6 py-2 border-b border-amber-500/30 bg-amber-500/10 text-amber-300 shrink-0'>
+        <AlertTriangle className='h-4 w-4 shrink-0' />
+        <span className='text-xs'>
+          Read-only — {isOwner ? 'your' : "this workspace owner's"} Enterprise subscription has lapsed.
+          {until ? ` Access ends ${until}.` : ''} {isOwner ? 'Resubscribe to restore full access.' : 'Contact the owner to restore full access.'}
+        </span>
+        {isOwner && (
+          <Link to='/upgrade' className='ms-auto text-xs font-semibold underline underline-offset-2'>
+            Resubscribe
+          </Link>
+        )}
+      </div>
+    )
+  }
+  return (
+    <div className='flex items-center gap-2 px-6 py-2 border-b border-red-500/30 bg-red-500/10 text-red-300 shrink-0'>
+      <Lock className='h-4 w-4 shrink-0' />
+      <span className='text-xs'>
+        Workspace unavailable — {isOwner ? 'your' : "the owner's"} Enterprise subscription lapsed and the grace period ended.
+        {isOwner ? ' Resubscribe to regain access; your data is retained.' : ' Contact the owner.'}
+      </span>
+      {isOwner && (
+        <Link to='/upgrade' className='ms-auto text-xs font-semibold underline underline-offset-2'>
+          Resubscribe
+        </Link>
+      )}
     </div>
   )
 }
